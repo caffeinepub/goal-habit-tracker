@@ -28,6 +28,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import type { SubjectQuestionProgress } from "../backend.d";
 import { useAddQuestions, useGetQuestionProgress } from "../hooks/useQueries";
+import MonthlyPlanSection from "./MonthlyPlanSection";
 
 const TOTAL_GOAL = 9000;
 
@@ -529,6 +530,9 @@ export default function QuestionsTab() {
           </Card>
         </motion.div>
       </div>
+
+      {/* Monthly Plan Section */}
+      <MonthlyPlanSection />
 
       {/* Footer */}
       <div className="mt-8 text-center">

@@ -4,9 +4,9 @@ import Iter "mo:core/Iter";
 import Array "mo:core/Array";
 import Principal "mo:core/Principal";
 import Runtime "mo:core/Runtime";
-import Migration "migration";
 
-(with migration = Migration.run)
+
+
 actor {
   type Subject = {
     id : Nat;
