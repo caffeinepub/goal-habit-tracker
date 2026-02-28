@@ -1,31 +1,8 @@
-import Principal "mo:core/Principal";
 import Map "mo:core/Map";
-import Nat "mo:core/Nat";
-import Set "mo:core/Set";
+import Principal "mo:core/Principal";
 
 module {
-  // Old types from the previous version
-  type Goal = {
-    id : Nat;
-    title : Text;
-    description : Text;
-    targetCount : Nat;
-  };
-
-  type GoalEntry = {
-    goalId : Nat;
-    date : Text;
-    timestamp : Int;
-  };
-
-  type OldActor = {
-    nextGoalId : Nat;
-    goals : Map.Map<(Principal, Nat), Goal>;
-    goalEntries : Set.Set<GoalEntry>;
-  };
-
-  // New types for the current version
-  type Subject = {
+  type OldSubject = {
     id : Nat;
     name : Text;
     description : Text;
@@ -33,23 +10,52 @@ module {
     isWeak : Bool;
   };
 
-  type UserData = {
-    subjects : [Subject];
+  type OldUserData = {
+    subjects : [OldSubject];
     mockScores : [Nat];
   };
 
-  type NewActor = {
-    userDataStore : Map.Map<Principal, UserData>;
+  type OldActor = {
     nextSubjectId : Nat;
+    userDataStore : Map.Map<Principal, OldUserData>;
   };
 
-  func dropOldState({ nextGoalId : Nat; goals : Map.Map<(Principal, Nat), Goal>; goalEntries : Set.Set<GoalEntry> }) : () {};
+  type StudySession = {
+    subjectName : Text;
+    hours : Float;
+    date : Text;
+  };
+
+  type SubjectQuestionProgress = {
+    subjectName : Text;
+    count : Nat;
+  };
+
+  type NewUserData = {
+    subjects : [OldSubject];
+    mockScores : [Nat];
+    studySessions : [StudySession];
+    questionProgress : [SubjectQuestionProgress];
+  };
+
+  type NewActor = {
+    nextSubjectId : Nat;
+    userDataStore : Map.Map<Principal, NewUserData>;
+  };
 
   public func run(old : OldActor) : NewActor {
-    dropOldState(old);
+    let newUserStore = old.userDataStore.map<Principal, OldUserData, NewUserData>(
+      func(_p, oldUserData) {
+        {
+          oldUserData with
+          studySessions = [];
+          questionProgress = [];
+        };
+      }
+    );
+
     {
-      userDataStore = Map.empty<Principal, UserData>();
-      nextSubjectId = 0;
+      old with userDataStore = newUserStore;
     };
   };
 };

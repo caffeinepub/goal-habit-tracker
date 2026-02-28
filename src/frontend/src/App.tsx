@@ -3,11 +3,19 @@ import { useState } from "react";
 import AddSubjectTab from "./components/AddSubjectTab";
 import AnalyticsTab from "./components/AnalyticsTab";
 import HomeTab from "./components/HomeTab";
+import QuestionsTab from "./components/QuestionsTab";
 import Sidebar from "./components/Sidebar";
+import StudyPlanTab from "./components/StudyPlanTab";
 import TimerTab from "./components/TimerTab";
 import { useGetMockScores, useGetSubjects } from "./hooks/useQueries";
 
-export type TabId = "home" | "add" | "analytics" | "timer";
+export type TabId =
+  | "home"
+  | "add"
+  | "analytics"
+  | "timer"
+  | "studyplan"
+  | "questions";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>("home");
@@ -73,6 +81,8 @@ export default function App() {
           />
         )}
         {activeTab === "timer" && <TimerTab />}
+        {activeTab === "studyplan" && <StudyPlanTab />}
+        {activeTab === "questions" && <QuestionsTab />}
       </main>
 
       <Toaster

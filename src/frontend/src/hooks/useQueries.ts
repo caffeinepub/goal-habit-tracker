@@ -93,3 +93,73 @@ export function useAddMockScore() {
     },
   });
 }
+
+// ---- Study Sessions ----
+
+export function useGetStudySessions() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["studySessions"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getStudySessions();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useAddStudySession() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      subjectName,
+      hours,
+      date,
+    }: {
+      subjectName: string;
+      hours: number;
+      date: string;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      return actor.addStudySession(subjectName, hours, date);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["studySessions"] });
+    },
+  });
+}
+
+// ---- Question Progress ----
+
+export function useGetQuestionProgress() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["questionProgress"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getQuestionProgress();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useAddQuestions() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      subjectName,
+      count,
+    }: {
+      subjectName: string;
+      count: number;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      return actor.addQuestions(subjectName, BigInt(count));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["questionProgress"] });
+    },
+  });
+}

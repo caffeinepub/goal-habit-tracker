@@ -1,35 +1,43 @@
-# SSC CGL Ultimate Study Tracker
+# SSC CGL Ultimate Tracker
 
 ## Current State
-Existing project is a basic Goal & Habit Tracker. Starting fresh with a merged, comprehensive SSC CGL study tracker.
+- Full-stack app with Motoko backend and React frontend
+- Features: 30-day subject habit grid, weak topic detection, score predictor, auto timetable, Pomodoro timer, analytics with mock score history
+- Backend APIs: addSubject, deleteSubject, toggleDay, addMockScore, getMockScores, getSubjects
+- Tabs: Home (dashboard + subject cards), Add Subject, Analytics, Pomodoro Timer
+- Sidebar shows overall progress
 
 ## Requested Changes (Diff)
 
 ### Add
-- **30-Day Habit/Subject Grid**: Each subject has a 30-day checkbox grid; clicking a cell toggles study completion for that day
-- **Subject Management**: Add subjects with name and topic description; delete subjects
-- **Weak Topic Detection**: Subjects with < 40% completion are flagged as weak automatically
-- **Score Predictor**: User enters mock test scores; app predicts final score using average + consistency boost from overall completion
-- **Auto Timetable Generator**: Displays today's focus plan based on weak subjects
-- **Pomodoro Timer**: 25-minute countdown timer with Start, Pause, Reset controls
-- **Dashboard**: Shows overall completion progress bar, predicted score, and today's timetable
-- **Search**: Filter subjects by name
-- **Persistent backend storage**: Subjects, mock scores, and study data stored in canister (replaces localStorage)
-- **Sidebar navigation**: Home, Analytics, Add Subject, Timer tabs
+1. **15 Hours Study Plan tab** -- A dedicated tab to track daily 15-hour study sessions
+   - Visual breakdown of 15 hours across subjects/slots
+   - Ability to log hours spent per subject per day
+   - Progress bar showing today's hours vs 15-hour target
+   - Weekly hours chart
+   - Backend: addStudySession(subjectName, hours, date), getStudySessions() -> Array<StudySession>
+
+2. **9000 Questions Progress tab** -- A tracker for solving 9000 practice questions
+   - Shows total questions solved out of 9000
+   - Subject-wise breakdown (e.g. Maths, English, Reasoning, GK) with individual targets
+   - Ability to log questions solved per subject
+   - Large visual progress indicator (circular or bar) showing overall % toward 9000
+   - Milestones (e.g. 1000, 2500, 5000, 7500, 9000) with celebration states
+   - Backend: addQuestions(subjectName, count), getQuestionProgress() -> Array<QuestionProgress>
 
 ### Modify
-- Replace localStorage with canister backend storage for persistence across devices
+- App.tsx: Add two new tab IDs: "studyplan" and "questions"
+- Sidebar.tsx: Add nav items for "Study Plan" and "Questions" tabs
+- backend.d.ts: Add new types and API methods for study sessions and question progress
 
 ### Remove
-- Firebase integration (not supported on this platform)
-- Android APK/Capacitor references
+- Nothing removed
 
 ## Implementation Plan
-1. Backend canister: store subjects (id, name, description, days array, weak flag), mock scores, retrieve and update per user
-2. Frontend: sidebar layout with tabs (Home, Add Subject, Analytics, Timer)
-3. Dashboard card: overall progress, predicted score, timetable suggestion
-4. Subject cards: 30-day grid with checkboxes, weak subject highlighted in red
-5. Add subject form: name + description inputs
-6. Mock score input + list display in Analytics tab
-7. Pomodoro timer component in Timer tab
-8. Search bar filtering subjects on Home tab
+1. Update Motoko backend to add StudySession and QuestionProgress data models and CRUD functions
+2. Update backend.d.ts with new types
+3. Create StudyPlanTab.tsx component with 15-hour daily tracker and weekly chart
+4. Create QuestionsTab.tsx component with 9000 question progress tracker, subject breakdowns, milestones
+5. Update App.tsx to add new tabs and wire data
+6. Update Sidebar.tsx to add new nav items
+7. Add React Query hooks for new backend calls

@@ -89,6 +89,15 @@ export class ExternalBlob {
         return this;
     }
 }
+export interface StudySession {
+    hours: number;
+    subjectName: string;
+    date: string;
+}
+export interface SubjectQuestionProgress {
+    subjectName: string;
+    count: bigint;
+}
 export interface Subject {
     id: bigint;
     days: Array<boolean>;
@@ -98,9 +107,13 @@ export interface Subject {
 }
 export interface backendInterface {
     addMockScore(score: bigint): Promise<void>;
+    addQuestions(subjectName: string, count: bigint): Promise<void>;
+    addStudySession(subjectName: string, hours: number, date: string): Promise<void>;
     addSubject(name: string, description: string): Promise<void>;
     deleteSubject(subjectId: bigint): Promise<void>;
     getMockScores(): Promise<Array<bigint>>;
+    getQuestionProgress(): Promise<Array<SubjectQuestionProgress>>;
+    getStudySessions(): Promise<Array<StudySession>>;
     getSubjects(): Promise<Array<Subject>>;
     toggleDay(subjectId: bigint, dayIndex: bigint): Promise<void>;
 }
@@ -117,6 +130,34 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.addMockScore(arg0);
+            return result;
+        }
+    }
+    async addQuestions(arg0: string, arg1: bigint): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.addQuestions(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.addQuestions(arg0, arg1);
+            return result;
+        }
+    }
+    async addStudySession(arg0: string, arg1: number, arg2: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.addStudySession(arg0, arg1, arg2);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.addStudySession(arg0, arg1, arg2);
             return result;
         }
     }
@@ -159,6 +200,34 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.getMockScores();
+            return result;
+        }
+    }
+    async getQuestionProgress(): Promise<Array<SubjectQuestionProgress>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getQuestionProgress();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getQuestionProgress();
+            return result;
+        }
+    }
+    async getStudySessions(): Promise<Array<StudySession>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getStudySessions();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getStudySessions();
             return result;
         }
     }

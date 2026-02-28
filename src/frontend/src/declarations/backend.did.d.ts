@@ -10,6 +10,11 @@ import type { ActorMethod } from '@icp-sdk/core/agent';
 import type { IDL } from '@icp-sdk/core/candid';
 import type { Principal } from '@icp-sdk/core/principal';
 
+export interface StudySession {
+  'hours' : number,
+  'subjectName' : string,
+  'date' : string,
+}
 export interface Subject {
   'id' : bigint,
   'days' : Array<boolean>,
@@ -17,11 +22,19 @@ export interface Subject {
   'description' : string,
   'isWeak' : boolean,
 }
+export interface SubjectQuestionProgress {
+  'subjectName' : string,
+  'count' : bigint,
+}
 export interface _SERVICE {
   'addMockScore' : ActorMethod<[bigint], undefined>,
+  'addQuestions' : ActorMethod<[string, bigint], undefined>,
+  'addStudySession' : ActorMethod<[string, number, string], undefined>,
   'addSubject' : ActorMethod<[string, string], undefined>,
   'deleteSubject' : ActorMethod<[bigint], undefined>,
   'getMockScores' : ActorMethod<[], Array<bigint>>,
+  'getQuestionProgress' : ActorMethod<[], Array<SubjectQuestionProgress>>,
+  'getStudySessions' : ActorMethod<[], Array<StudySession>>,
   'getSubjects' : ActorMethod<[], Array<Subject>>,
   'toggleDay' : ActorMethod<[bigint, bigint], undefined>,
 }

@@ -2,6 +2,8 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import {
   BarChart3,
+  BookOpen,
+  Clock,
   GraduationCap,
   Home,
   PlusCircle,
@@ -24,6 +26,8 @@ const navItems: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "add", label: "Add Subject", icon: <PlusCircle size={18} /> },
   { id: "analytics", label: "Analytics", icon: <BarChart3 size={18} /> },
   { id: "timer", label: "Pomodoro", icon: <Timer size={18} /> },
+  { id: "studyplan", label: "Study Plan", icon: <Clock size={18} /> },
+  { id: "questions", label: "Questions", icon: <BookOpen size={18} /> },
 ];
 
 export default function Sidebar({

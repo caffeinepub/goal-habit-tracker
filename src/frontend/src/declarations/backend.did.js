@@ -8,6 +8,15 @@
 
 import { IDL } from '@icp-sdk/core/candid';
 
+export const SubjectQuestionProgress = IDL.Record({
+  'subjectName' : IDL.Text,
+  'count' : IDL.Nat,
+});
+export const StudySession = IDL.Record({
+  'hours' : IDL.Float64,
+  'subjectName' : IDL.Text,
+  'date' : IDL.Text,
+});
 export const Subject = IDL.Record({
   'id' : IDL.Nat,
   'days' : IDL.Vec(IDL.Bool),
@@ -18,9 +27,17 @@ export const Subject = IDL.Record({
 
 export const idlService = IDL.Service({
   'addMockScore' : IDL.Func([IDL.Nat], [], []),
+  'addQuestions' : IDL.Func([IDL.Text, IDL.Nat], [], []),
+  'addStudySession' : IDL.Func([IDL.Text, IDL.Float64, IDL.Text], [], []),
   'addSubject' : IDL.Func([IDL.Text, IDL.Text], [], []),
   'deleteSubject' : IDL.Func([IDL.Nat], [], []),
   'getMockScores' : IDL.Func([], [IDL.Vec(IDL.Nat)], ['query']),
+  'getQuestionProgress' : IDL.Func(
+      [],
+      [IDL.Vec(SubjectQuestionProgress)],
+      ['query'],
+    ),
+  'getStudySessions' : IDL.Func([], [IDL.Vec(StudySession)], ['query']),
   'getSubjects' : IDL.Func([], [IDL.Vec(Subject)], ['query']),
   'toggleDay' : IDL.Func([IDL.Nat, IDL.Nat], [], []),
 });
@@ -28,6 +45,15 @@ export const idlService = IDL.Service({
 export const idlInitArgs = [];
 
 export const idlFactory = ({ IDL }) => {
+  const SubjectQuestionProgress = IDL.Record({
+    'subjectName' : IDL.Text,
+    'count' : IDL.Nat,
+  });
+  const StudySession = IDL.Record({
+    'hours' : IDL.Float64,
+    'subjectName' : IDL.Text,
+    'date' : IDL.Text,
+  });
   const Subject = IDL.Record({
     'id' : IDL.Nat,
     'days' : IDL.Vec(IDL.Bool),
@@ -38,9 +64,17 @@ export const idlFactory = ({ IDL }) => {
   
   return IDL.Service({
     'addMockScore' : IDL.Func([IDL.Nat], [], []),
+    'addQuestions' : IDL.Func([IDL.Text, IDL.Nat], [], []),
+    'addStudySession' : IDL.Func([IDL.Text, IDL.Float64, IDL.Text], [], []),
     'addSubject' : IDL.Func([IDL.Text, IDL.Text], [], []),
     'deleteSubject' : IDL.Func([IDL.Nat], [], []),
     'getMockScores' : IDL.Func([], [IDL.Vec(IDL.Nat)], ['query']),
+    'getQuestionProgress' : IDL.Func(
+        [],
+        [IDL.Vec(SubjectQuestionProgress)],
+        ['query'],
+      ),
+    'getStudySessions' : IDL.Func([], [IDL.Vec(StudySession)], ['query']),
     'getSubjects' : IDL.Func([], [IDL.Vec(Subject)], ['query']),
     'toggleDay' : IDL.Func([IDL.Nat, IDL.Nat], [], []),
   });

@@ -1,7 +1,7 @@
 import Map "mo:core/Map";
 import Nat "mo:core/Nat";
-import Array "mo:core/Array";
 import Iter "mo:core/Iter";
+import Array "mo:core/Array";
 import Principal "mo:core/Principal";
 import Runtime "mo:core/Runtime";
 import Migration "migration";
@@ -16,9 +16,22 @@ actor {
     isWeak : Bool;
   };
 
+  type StudySession = {
+    subjectName : Text;
+    hours : Float;
+    date : Text;
+  };
+
+  type SubjectQuestionProgress = {
+    subjectName : Text;
+    count : Nat;
+  };
+
   type UserData = {
     subjects : [Subject];
     mockScores : [Nat];
+    studySessions : [StudySession];
+    questionProgress : [SubjectQuestionProgress];
   };
 
   var nextSubjectId = 0;
@@ -30,6 +43,8 @@ actor {
         let newData = {
           subjects = [];
           mockScores = [];
+          studySessions = [];
+          questionProgress = [];
         };
         userDataStore.add(p, newData);
         newData;
@@ -110,4 +125,55 @@ actor {
     let updatedScores = userData.mockScores.concat([score]);
     userDataStore.add(caller, { userData with mockScores = updatedScores });
   };
+
+  public shared ({ caller }) func addStudySession(subjectName : Text, hours : Float, date : Text) : async () {
+    let userData = getOrCreateUserData(caller);
+
+    let newSession : StudySession = {
+      subjectName;
+      hours;
+      date;
+    };
+
+    let updatedSessions = userData.studySessions.concat([newSession]);
+    userDataStore.add(caller, { userData with studySessions = updatedSessions });
+  };
+
+  public query ({ caller }) func getStudySessions() : async [StudySession] {
+    getOrCreateUserData(caller).studySessions;
+  };
+
+  public shared ({ caller }) func addQuestions(subjectName : Text, count : Nat) : async () {
+    let userData = getOrCreateUserData(caller);
+
+    let currentProgress = userData.questionProgress.filter(
+      func(progress) {
+        progress.subjectName == subjectName;
+      }
+    );
+
+    let newCount = if (currentProgress.size() > 0) {
+      currentProgress[currentProgress.size() - 1].count + count;
+    } else { count };
+
+    let filteredProgress = userData.questionProgress.filter(
+      func(progress) {
+        progress.subjectName != subjectName;
+      }
+    );
+
+    let updatedProgress = filteredProgress.concat([
+      {
+        subjectName;
+        count = newCount;
+      }
+    ]);
+
+    userDataStore.add(caller, { userData with questionProgress = updatedProgress });
+  };
+
+  public query ({ caller }) func getQuestionProgress() : async [SubjectQuestionProgress] {
+    getOrCreateUserData(caller).questionProgress;
+  };
 };
+
