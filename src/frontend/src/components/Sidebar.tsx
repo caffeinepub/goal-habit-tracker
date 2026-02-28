@@ -9,9 +9,11 @@ import {
   Home,
   LogOut,
   NotebookPen,
+  Palette,
   PlusCircle,
   Search,
   StickyNote,
+  Table,
   Timer,
   User,
 } from "lucide-react";
@@ -25,6 +27,7 @@ interface SidebarProps {
   overallCompletion: number;
   search: string;
   onSearchChange: (val: string) => void;
+  onOpenAppearance: () => void;
 }
 
 const navItems: { id: TabId; label: string; icon: React.ReactNode }[] = [
@@ -37,6 +40,7 @@ const navItems: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "exam", label: "Exam Mode", icon: <GraduationCap size={18} /> },
   { id: "notebook", label: "Notebook", icon: <NotebookPen size={18} /> },
   { id: "notepad", label: "Notepad", icon: <StickyNote size={18} /> },
+  { id: "tablemaker", label: "Table Maker", icon: <Table size={18} /> },
 ];
 
 function truncatePrincipal(principal: string): string {
@@ -50,6 +54,7 @@ export default function Sidebar({
   overallCompletion,
   search,
   onSearchChange,
+  onOpenAppearance,
 }: SidebarProps) {
   const { identity, clear } = useInternetIdentity();
   const principalStr = identity?.getPrincipal().toString() ?? "";
@@ -139,16 +144,28 @@ export default function Sidebar({
           </div>
         )}
 
-        {/* Logout button */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={clear}
-          className="w-full h-7 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 gap-1.5 justify-start"
-        >
-          <LogOut size={12} />
-          Log out
-        </Button>
+        {/* Appearance + Logout row */}
+        <div className="flex gap-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onOpenAppearance}
+            className="flex-1 h-7 text-xs text-muted-foreground hover:text-primary hover:bg-primary/10 gap-1.5 justify-start"
+            title="Appearance Settings"
+          >
+            <Palette size={12} />
+            Appearance
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clear}
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+            title="Log out"
+          >
+            <LogOut size={12} />
+          </Button>
+        </div>
       </div>
     </aside>
   );

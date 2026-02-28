@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import AddSubjectTab from "./components/AddSubjectTab";
 import AnalyticsTab from "./components/AnalyticsTab";
+import AppearancePanel, { type AppTheme } from "./components/AppearancePanel";
 import ExamTab from "./components/ExamTab";
 import FloatingTimerWidget from "./components/FloatingTimerWidget";
 import HomeTab from "./components/HomeTab";
@@ -12,6 +13,7 @@ import NotepadTab from "./components/NotepadTab";
 import QuestionsTab from "./components/QuestionsTab";
 import Sidebar from "./components/Sidebar";
 import StudyPlanTab from "./components/StudyPlanTab";
+import TableMakerTab from "./components/TableMakerTab";
 import TimerTab from "./components/TimerTab";
 import { useInternetIdentity } from "./hooks/useInternetIdentity";
 import { useGetMockScores, useGetSubjects } from "./hooks/useQueries";
@@ -25,7 +27,8 @@ export type TabId =
   | "questions"
   | "exam"
   | "notebook"
-  | "notepad";
+  | "notepad"
+  | "tablemaker";
 
 export type TimerMode = "work" | "short" | "long";
 
@@ -50,6 +53,41 @@ export default function App() {
   const { identity, isInitializing } = useInternetIdentity();
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [search, setSearch] = useState("");
+
+  // ─── Appearance state ──────────────────────────────────────────────────────
+  const [appearancePanelOpen, setAppearancePanelOpen] = useState(false);
+  const [theme, setTheme] = useState<AppTheme>(() => {
+    return (localStorage.getItem("ssc_theme") as AppTheme) ?? "dark";
+  });
+  const [textColor, setTextColor] = useState<string>(() => {
+    return localStorage.getItem("ssc_text_color") ?? "#e8e0d0";
+  });
+  const [appFont, setAppFont] = useState<string>(() => {
+    return localStorage.getItem("ssc_font") ?? "Satoshi";
+  });
+
+  // Apply theme/font/color on mount and changes
+  useEffect(() => {
+    if (theme === "light") {
+      document.documentElement.classList.add("light");
+    } else {
+      document.documentElement.classList.remove("light");
+    }
+    localStorage.setItem("ssc_theme", theme);
+  }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--foreground-custom",
+      textColor,
+    );
+    localStorage.setItem("ssc_text_color", textColor);
+  }, [textColor]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--app-font", `'${appFont}'`);
+    localStorage.setItem("ssc_font", appFont);
+  }, [appFont]);
 
   // ─── Timer state (lifted to App for floating widget) ──────────────────────
   const [timerMode, setTimerMode] = useState<TimerMode>("work");
@@ -212,7 +250,21 @@ export default function App() {
         overallCompletion={overallCompletion}
         search={search}
         onSearchChange={setSearch}
+        onOpenAppearance={() => setAppearancePanelOpen((v) => !v)}
       />
+
+      {/* Appearance Panel */}
+      {appearancePanelOpen && (
+        <AppearancePanel
+          theme={theme}
+          textColor={textColor}
+          font={appFont}
+          onThemeChange={setTheme}
+          onTextColorChange={setTextColor}
+          onFontChange={setAppFont}
+          onClose={() => setAppearancePanelOpen(false)}
+        />
+      )}
 
       <main className="flex-1 overflow-y-auto min-h-screen">
         {activeTab === "home" && (
@@ -253,6 +305,7 @@ export default function App() {
         {activeTab === "exam" && <ExamTab />}
         {activeTab === "notebook" && <NotebookTab />}
         {activeTab === "notepad" && <NotepadTab />}
+        {activeTab === "tablemaker" && <TableMakerTab />}
       </main>
 
       {/* Floating Timer Widget */}

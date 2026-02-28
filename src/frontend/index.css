@@ -30,7 +30,7 @@
   :root {
     --radius: 0.625rem;
 
-    /* ─── SSC CGL: Tactical Black + Crimson ─── */
+    /* ─── SSC CGL: Tactical Black + Crimson (Dark Mode) ─── */
     --background: 0.08 0.005 20;
     --foreground: 0.95 0.01 60;
     --card: 0.11 0.008 20;
@@ -83,6 +83,57 @@
     --glow-card: 0 4px 40px oklch(0 0 0 / 0.6);
   }
 
+  /* ─── Light Mode ─── */
+  html.light {
+    color-scheme: light;
+
+    --background: 0.98 0.003 60;
+    --foreground: 0.15 0.012 20;
+    --card: 0.96 0.005 40;
+    --card-foreground: 0.15 0.012 20;
+    --popover: 0.97 0.004 40;
+    --popover-foreground: 0.15 0.012 20;
+
+    /* Keep crimson primary */
+    --primary: 0.55 0.22 25;
+    --primary-foreground: 0.97 0.005 0;
+
+    --secondary: 0.92 0.008 40;
+    --secondary-foreground: 0.2 0.012 20;
+
+    --muted: 0.92 0.007 40;
+    --muted-foreground: 0.45 0.018 20;
+
+    --accent: 0.90 0.012 25;
+    --accent-foreground: 0.2 0.012 20;
+
+    --destructive: 0.55 0.22 25;
+    --destructive-foreground: 0.97 0 0;
+
+    --border: 0.85 0.01 40;
+    --input: 0.94 0.006 40;
+    --ring: 0.55 0.22 25;
+
+    /* Charts */
+    --chart-1: 0.55 0.22 25;
+    --chart-2: 0.62 0.18 45;
+    --chart-3: 0.58 0.2 70;
+    --chart-4: 0.5 0.15 200;
+    --chart-5: 0.48 0.18 280;
+
+    /* Sidebar — light grey */
+    --sidebar: 0.94 0.006 40;
+    --sidebar-foreground: 0.15 0.012 20;
+    --sidebar-primary: 0.55 0.22 25;
+    --sidebar-primary-foreground: 0.97 0.005 0;
+    --sidebar-accent: 0.88 0.01 40;
+    --sidebar-accent-foreground: 0.2 0.012 20;
+    --sidebar-border: 0.83 0.012 40;
+    --sidebar-ring: 0.55 0.22 25;
+
+    --glow-card: 0 4px 40px oklch(0 0 0 / 0.1);
+  }
+
   * {
     @apply border-border;
   }
@@ -92,12 +143,19 @@
   }
 
   body {
-    @apply bg-background text-foreground;
-    font-family: 'Satoshi', 'Cabinet Grotesk', system-ui, sans-serif;
+    @apply bg-background;
+    color: var(--foreground-custom, oklch(var(--foreground)));
+    font-family: var(--app-font, 'Satoshi'), 'Cabinet Grotesk', system-ui, sans-serif;
     min-height: 100vh;
     background-image:
       radial-gradient(ellipse at 0% 0%, oklch(0.15 0.03 25 / 0.5) 0%, transparent 50%),
       radial-gradient(ellipse at 100% 100%, oklch(0.12 0.02 20 / 0.4) 0%, transparent 50%);
+  }
+
+  html.light body {
+    background-image:
+      radial-gradient(ellipse at 0% 0%, oklch(0.92 0.025 25 / 0.3) 0%, transparent 50%),
+      radial-gradient(ellipse at 100% 100%, oklch(0.94 0.015 40 / 0.3) 0%, transparent 50%);
   }
 
   /* Subtle grid texture */
@@ -111,6 +169,12 @@
     background-size: 40px 40px;
     pointer-events: none;
     z-index: 0;
+  }
+
+  html.light body::before {
+    background-image:
+      linear-gradient(oklch(0.6 0.01 40 / 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, oklch(0.6 0.01 40 / 0.06) 1px, transparent 1px);
   }
 
   #root {
