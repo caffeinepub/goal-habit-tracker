@@ -16,7 +16,9 @@ import {
   AlertCircle,
   CalendarDays,
   CheckCircle2,
+  Clock,
   Flame,
+  Lock,
   Target,
   TrendingUp,
 } from "lucide-react";
@@ -37,6 +39,11 @@ const SUBJECT_DAILY = [
   { name: "Current Affairs", daily: 33, total: 1000 },
   { name: "Computer", daily: 17, total: 500 },
 ];
+
+function isPastNoon() {
+  // Today is always editable for the full 24 hours
+  return false;
+}
 
 function getTodayKey(): string {
   const d = new Date();
@@ -117,6 +124,7 @@ export default function MonthlyPlanSection() {
   const [planStart, setPlanStart] = useState<Date | null>(null);
   const [inputValue, setInputValue] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const locked = isPastNoon();
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -307,59 +315,105 @@ export default function MonthlyPlanSection() {
             <CardTitle className="font-display text-base font-semibold flex items-center gap-2">
               <Flame size={15} className="text-amber-400" />
               Log Today's Questions
+              {locked && (
+                <span className="ml-auto flex items-center gap-1 text-amber-400 text-xs font-normal">
+                  <Lock size={11} />
+                  Locked
+                </span>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleLogToday} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground uppercase tracking-wider">
-                  Questions Solved Today
-                </Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={500}
-                  placeholder="e.g. 150"
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  className="bg-muted/40 border-input focus:border-primary/50 font-mono"
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  Today so far:{" "}
-                  <span className="font-mono font-bold text-foreground">
-                    {todaySolved}
-                  </span>{" "}
-                  questions
-                  {todaySolved > 0 && (
-                    <span
-                      className={`ml-1 ${todaySolved >= DAILY_TARGET ? "text-emerald-400" : "text-amber-400"}`}
-                    >
-                      {todaySolved >= DAILY_TARGET
-                        ? "✓ Target met!"
-                        : `(${DAILY_TARGET - todaySolved} more to reach 300)`}
-                    </span>
-                  )}
-                </p>
-              </div>
-
-              <Button
-                type="submit"
-                disabled={isSubmitting || !inputValue}
-                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+            {locked ? (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col items-center gap-3 py-6 px-4 rounded-xl border border-amber-500/30 bg-amber-500/5 text-center"
               >
-                {isSubmitting ? (
-                  <span className="flex items-center gap-2">
-                    <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
-                    Logging...
-                  </span>
-                ) : (
-                  <>
-                    <Flame size={14} className="mr-2" />
-                    Log Questions
-                  </>
-                )}
-              </Button>
-            </form>
+                <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center">
+                  <Lock size={18} className="text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-amber-400">
+                    Editing locked after 12:00 PM
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Today's questions have been recorded. Come back tomorrow to
+                    log more.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Clock size={11} />
+                  <span>Today solved: {todaySolved} questions</span>
+                </div>
+              </motion.div>
+            ) : (
+              <form onSubmit={handleLogToday} className="space-y-4">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30 border border-border mb-2">
+                  <Clock size={12} className="text-muted-foreground shrink-0" />
+                  <p className="text-xs text-muted-foreground">
+                    Logging for today:{" "}
+                    <span className="font-semibold text-foreground">
+                      {new Date().toLocaleDateString("en-IN", {
+                        weekday: "short",
+                        day: "numeric",
+                        month: "short",
+                      })}
+                    </span>{" "}
+                    · Editable all day
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+                    Questions Solved Today
+                  </Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={500}
+                    placeholder="e.g. 150"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    className="bg-muted/40 border-input focus:border-primary/50 font-mono"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Today so far:{" "}
+                    <span className="font-mono font-bold text-foreground">
+                      {todaySolved}
+                    </span>{" "}
+                    questions
+                    {todaySolved > 0 && (
+                      <span
+                        className={`ml-1 ${todaySolved >= DAILY_TARGET ? "text-emerald-400" : "text-amber-400"}`}
+                      >
+                        {todaySolved >= DAILY_TARGET
+                          ? "✓ Target met!"
+                          : `(${DAILY_TARGET - todaySolved} more to reach 300)`}
+                      </span>
+                    )}
+                  </p>
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={isSubmitting || !inputValue}
+                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                >
+                  {isSubmitting ? (
+                    <span className="flex items-center gap-2">
+                      <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
+                      Logging...
+                    </span>
+                  ) : (
+                    <>
+                      <Flame size={14} className="mr-2" />
+                      Log Questions
+                    </>
+                  )}
+                </Button>
+              </form>
+            )}
 
             {/* Today's progress bar */}
             <div className="mt-4 space-y-1.5">

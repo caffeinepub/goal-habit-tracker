@@ -16,7 +16,9 @@ import {
   Award,
   BookOpen,
   CheckCircle2,
+  Clock,
   Flame,
+  Lock,
   PlusCircle,
   Star,
   Target,
@@ -83,6 +85,11 @@ const MILESTONES = [
   { count: 7500, label: "7.5K Legend", icon: <Star size={14} /> },
   { count: 9000, label: "9K Master", icon: <Trophy size={14} /> },
 ];
+
+function isPastNoon() {
+  // Today is always editable for the full 24 hours
+  return false;
+}
 
 function getMotivationalMessage(total: number): string {
   const pct = (total / TOTAL_GOAL) * 100;
@@ -174,6 +181,7 @@ export default function QuestionsTab() {
 
   const [subject, setSubject] = useState("");
   const [countInput, setCountInput] = useState("");
+  const locked = isPastNoon();
 
   // Build a map from backend data
   const progressMap: Record<string, number> = {};
@@ -367,61 +375,120 @@ export default function QuestionsTab() {
               <CardTitle className="font-display text-base font-semibold flex items-center gap-2">
                 <PlusCircle size={16} className="text-primary" />
                 Log Questions Solved
+                {locked && (
+                  <span className="ml-auto flex items-center gap-1 text-amber-400 text-xs font-normal">
+                    <Lock size={11} />
+                    Locked
+                  </span>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleAdd} className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">
-                    Subject
-                  </Label>
-                  <Select value={subject} onValueChange={setSubject}>
-                    <SelectTrigger className="bg-muted/40 border-input focus:border-primary/50">
-                      <SelectValue placeholder="Select subject..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SUBJECT_TARGETS.map((s) => (
-                        <SelectItem key={s.name} value={s.name}>
-                          {s.name} ({s.target.toLocaleString()} target)
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">
-                    Questions Solved
-                  </Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={1000}
-                    placeholder="e.g. 50"
-                    value={countInput}
-                    onChange={(e) => setCountInput(e.target.value)}
-                    className="bg-muted/40 border-input focus:border-primary/50 font-mono"
-                  />
-                </div>
-
-                <Button
-                  type="submit"
-                  disabled={addQuestions.isPending || !subject || !countInput}
-                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+              {locked ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex flex-col items-center gap-3 py-6 px-4 rounded-xl border border-amber-500/30 bg-amber-500/5 text-center"
                 >
-                  {addQuestions.isPending ? (
-                    <span className="flex items-center gap-2">
-                      <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
-                      Adding...
-                    </span>
-                  ) : (
-                    <>
-                      <PlusCircle size={14} className="mr-2" />
-                      Add Questions
-                    </>
-                  )}
-                </Button>
-              </form>
+                  <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center">
+                    <Lock size={18} className="text-amber-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-400">
+                      Editing locked after 12:00 PM
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Today's questions have been recorded. Come back tomorrow
+                      to log more.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Clock size={11} />
+                    <span>Total solved: {totalSolved.toLocaleString()}</span>
+                  </div>
+                </motion.div>
+              ) : (
+                <form onSubmit={handleAdd} className="space-y-4">
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30 border border-border mb-2">
+                    <Clock
+                      size={12}
+                      className="text-muted-foreground shrink-0"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Logging for today:{" "}
+                      <span className="font-semibold text-foreground">
+                        {new Date().toLocaleDateString("en-IN", {
+                          weekday: "short",
+                          day: "numeric",
+                          month: "short",
+                        })}
+                      </span>{" "}
+                      · Editable all day
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+                      Subject
+                    </Label>
+                    <Select
+                      value={subject}
+                      onValueChange={setSubject}
+                      disabled={locked}
+                    >
+                      <SelectTrigger className="bg-muted/40 border-input focus:border-primary/50">
+                        <SelectValue placeholder="Select subject..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SUBJECT_TARGETS.map((s) => (
+                          <SelectItem key={s.name} value={s.name}>
+                            {s.name} ({s.target.toLocaleString()} target)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+                      Questions Solved
+                    </Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={1000}
+                      placeholder="e.g. 50"
+                      value={countInput}
+                      onChange={(e) => setCountInput(e.target.value)}
+                      disabled={locked}
+                      className="bg-muted/40 border-input focus:border-primary/50 font-mono"
+                    />
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={
+                      addQuestions.isPending ||
+                      !subject ||
+                      !countInput ||
+                      locked
+                    }
+                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                  >
+                    {addQuestions.isPending ? (
+                      <span className="flex items-center gap-2">
+                        <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
+                        Adding...
+                      </span>
+                    ) : (
+                      <>
+                        <PlusCircle size={14} className="mr-2" />
+                        Add Questions
+                      </>
+                    )}
+                  </Button>
+                </form>
+              )}
             </CardContent>
           </Card>
         </motion.div>

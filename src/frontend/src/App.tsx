@@ -1,7 +1,9 @@
 import { Toaster } from "@/components/ui/sonner";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import AddSubjectTab from "./components/AddSubjectTab";
 import AnalyticsTab from "./components/AnalyticsTab";
+import FloatingTimerWidget from "./components/FloatingTimerWidget";
 import HomeTab from "./components/HomeTab";
 import QuestionsTab from "./components/QuestionsTab";
 import Sidebar from "./components/Sidebar";
@@ -17,14 +19,48 @@ export type TabId =
   | "studyplan"
   | "questions";
 
+export type TimerMode = "work" | "short" | "long";
+
+const TIMER_PRESETS: Record<
+  TimerMode,
+  { label: string; defaultSeconds: number }
+> = {
+  work: { label: "Focus", defaultSeconds: 1500 },
+  short: { label: "Short Break", defaultSeconds: 300 },
+  long: { label: "Long Break", defaultSeconds: 900 },
+};
+
+const SESSION_TIPS = [
+  "Take a glass of water before starting",
+  "Put your phone on Do Not Disturb",
+  "Clear your desk before focusing",
+  "Identify your single most important task",
+  "Review your notes after the session",
+];
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [search, setSearch] = useState("");
 
+  // ─── Timer state (lifted to App for floating widget) ──────────────────────
+  const [timerMode, setTimerMode] = useState<TimerMode>("work");
+  const [timeLeft, setTimeLeft] = useState(1500);
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [timerSessions, setTimerSessions] = useState(0);
+  const [customDefaultSeconds, setCustomDefaultSeconds] = useState<number>(
+    () => {
+      const saved = localStorage.getItem("ssc_timer_default");
+      return saved ? Number(saved) : 1500;
+    },
+  );
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ─── Backend data ──────────────────────────────────────────────────────────
   const { data: subjects = [], isLoading: subjectsLoading } = useGetSubjects();
   const { data: mockScores = [], isLoading: scoresLoading } =
     useGetMockScores();
 
+  // ─── Derived values ────────────────────────────────────────────────────────
   const overallCompletion =
     subjects.length === 0
       ? 0
@@ -49,6 +85,96 @@ export default function App() {
     weakSubjects.length > 0
       ? `Focus Today: ${weakSubjects.map((s) => s.name).join(", ")}`
       : "Balanced Revision Day";
+
+  // ─── Timer interval ────────────────────────────────────────────────────────
+  const clearTimerInterval = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (timerRunning) {
+      intervalRef.current = setInterval(() => {
+        setTimeLeft((t) => {
+          if (t <= 1) {
+            clearTimerInterval();
+            setTimerRunning(false);
+            setTimerSessions((s) => s + 1);
+            toast.success(
+              timerMode === "work"
+                ? "Focus session complete! Take a break."
+                : "Break over! Time to focus.",
+            );
+            return 0;
+          }
+          return t - 1;
+        });
+      }, 1000);
+    } else {
+      clearTimerInterval();
+    }
+    return clearTimerInterval;
+  }, [timerRunning, clearTimerInterval, timerMode]);
+
+  // ─── Browser tab title update ──────────────────────────────────────────────
+  useEffect(() => {
+    if (timerRunning) {
+      const m = Math.floor(timeLeft / 60);
+      const s = timeLeft % 60;
+      document.title = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")} – SSC Tracker`;
+    } else {
+      document.title = "SSC CGL Tracker";
+    }
+    return () => {
+      document.title = "SSC CGL Tracker";
+    };
+  }, [timerRunning, timeLeft]);
+
+  // ─── Save custom default to localStorage ──────────────────────────────────
+  useEffect(() => {
+    localStorage.setItem("ssc_timer_default", String(customDefaultSeconds));
+  }, [customDefaultSeconds]);
+
+  // ─── Timer handlers ────────────────────────────────────────────────────────
+  const handleTimerModeChange = useCallback(
+    (newMode: TimerMode) => {
+      setTimerRunning(false);
+      setTimerMode(newMode);
+      if (newMode === "work") {
+        setTimeLeft(customDefaultSeconds);
+      } else {
+        setTimeLeft(TIMER_PRESETS[newMode].defaultSeconds);
+      }
+    },
+    [customDefaultSeconds],
+  );
+
+  const handleTimerToggle = useCallback(() => {
+    setTimerRunning((r) => !r);
+  }, []);
+
+  const handleTimerReset = useCallback(() => {
+    setTimerRunning(false);
+    if (timerMode === "work") {
+      setTimeLeft(customDefaultSeconds);
+    } else {
+      setTimeLeft(TIMER_PRESETS[timerMode].defaultSeconds);
+    }
+  }, [timerMode, customDefaultSeconds]);
+
+  const handleSetDefault = useCallback(
+    (seconds: number) => {
+      setCustomDefaultSeconds(seconds);
+      if (timerMode === "work" && !timerRunning) {
+        setTimeLeft(seconds);
+      }
+    },
+    [timerMode, timerRunning],
+  );
+
+  const tipIndex = timerSessions % SESSION_TIPS.length;
 
   return (
     <div className="min-h-screen flex bg-background text-foreground">
@@ -80,10 +206,33 @@ export default function App() {
             predictedScore={predictedScore}
           />
         )}
-        {activeTab === "timer" && <TimerTab />}
+        {activeTab === "timer" && (
+          <TimerTab
+            mode={timerMode}
+            timeLeft={timeLeft}
+            running={timerRunning}
+            sessions={timerSessions}
+            customDefaultSeconds={customDefaultSeconds}
+            tipIndex={tipIndex}
+            onModeChange={handleTimerModeChange}
+            onToggleRunning={handleTimerToggle}
+            onReset={handleTimerReset}
+            onSetDefault={handleSetDefault}
+          />
+        )}
         {activeTab === "studyplan" && <StudyPlanTab />}
         {activeTab === "questions" && <QuestionsTab />}
       </main>
+
+      {/* Floating Timer Widget */}
+      <FloatingTimerWidget
+        mode={timerMode}
+        timeLeft={timeLeft}
+        running={timerRunning}
+        activeTab={activeTab}
+        onToggleRunning={handleTimerToggle}
+        onGoToTimer={() => setActiveTab("timer")}
+      />
 
       <Toaster
         theme="dark"
