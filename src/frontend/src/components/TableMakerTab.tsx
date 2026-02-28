@@ -3,19 +3,26 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  Bold,
   Check,
   ChevronRight,
+  Clipboard,
   Columns,
+  Italic,
   PlusCircle,
   Rows,
   Table as TableIcon,
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 interface TableCell {
   text: string;
   ticked: boolean;
+  bold?: boolean;
+  italic?: boolean;
+  bgColor?: string;
 }
 
 interface TrackerTable {
@@ -24,6 +31,7 @@ interface TrackerTable {
   rows: number;
   cols: number;
   cells: TableCell[][];
+  borderColor?: string;
 }
 
 const LS_KEY = "ssc_tables";
@@ -144,6 +152,22 @@ export default function TableMakerTab() {
         };
       }),
     );
+  }
+
+  function updateBorderColor(tableId: number, color: string) {
+    setTables((prev) =>
+      prev.map((t) => (t.id === tableId ? { ...t, borderColor: color } : t)),
+    );
+  }
+
+  function copyAsText(table: TrackerTable) {
+    const text = table.cells
+      .map((row) => row.map((c) => c.text || "").join("\t"))
+      .join("\n");
+    navigator.clipboard
+      .writeText(text)
+      .then(() => toast.success("Table copied to clipboard!"))
+      .catch(() => toast.error("Failed to copy"));
   }
 
   return (
@@ -317,8 +341,8 @@ export default function TableMakerTab() {
         ) : (
           <>
             {/* Table header */}
-            <div className="px-6 py-4 border-b border-border flex items-center gap-4 bg-card/40">
-              <div className="flex-1">
+            <div className="px-6 py-4 border-b border-border flex flex-wrap items-center gap-3 bg-card/40">
+              <div className="flex-1 min-w-0">
                 <h2 className="text-base font-bold text-foreground">
                   {selectedTable.title}
                 </h2>
@@ -328,7 +352,32 @@ export default function TableMakerTab() {
                   ticked
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2 items-center">
+                {/* Border color picker */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-muted-foreground font-medium">
+                    Border
+                  </span>
+                  <input
+                    type="color"
+                    value={selectedTable.borderColor ?? "#3f3f46"}
+                    onChange={(e) =>
+                      updateBorderColor(selectedTable.id, e.target.value)
+                    }
+                    className="w-7 h-7 rounded border border-border cursor-pointer bg-transparent"
+                    style={{ padding: "2px" }}
+                    title="Table border color"
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => copyAsText(selectedTable)}
+                  className="gap-1.5 h-8 text-xs border-border"
+                >
+                  <Clipboard size={13} />
+                  Copy as Text
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -354,7 +403,16 @@ export default function TableMakerTab() {
             <ScrollArea className="flex-1">
               <div className="p-6">
                 <div className="overflow-x-auto">
-                  <table className="border-collapse min-w-full">
+                  <table
+                    className="border-collapse min-w-full"
+                    style={
+                      selectedTable.borderColor
+                        ? ({
+                            "--table-border-color": selectedTable.borderColor,
+                          } as React.CSSProperties)
+                        : undefined
+                    }
+                  >
                     <tbody>
                       {selectedTable.cells.map((row, ri) => {
                         const rowKey = `row-${ri}`;
@@ -374,6 +432,7 @@ export default function TableMakerTab() {
                                   row={ri}
                                   col={ci}
                                   colIndex={ci}
+                                  borderColor={selectedTable.borderColor}
                                   onUpdate={updateCell}
                                 />
                               );
@@ -399,6 +458,7 @@ interface TableCellProps {
   row: number;
   col: number;
   colIndex: number;
+  borderColor?: string;
   onUpdate: (
     tableId: number,
     row: number,
@@ -413,9 +473,11 @@ function TableCell({
   row,
   col,
   colIndex,
+  borderColor,
   onUpdate,
 }: TableCellProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [focused, setFocused] = useState(false);
 
   function handleTextChange(e: React.ChangeEvent<HTMLInputElement>) {
     const text = e.target.value;
@@ -431,18 +493,86 @@ function TableCell({
     onUpdate(tableId, row, col, { ticked: !cell.ticked });
   }
 
+  const cellStyle: React.CSSProperties = {};
+  if (cell.bgColor) cellStyle.backgroundColor = cell.bgColor;
+  if (borderColor) cellStyle.borderColor = borderColor;
+
   return (
     <td
-      className={`border border-border relative transition-colors min-w-[120px] ${
-        cell.ticked
+      className={`border relative transition-colors min-w-[120px] ${
+        cell.ticked && !cell.bgColor
           ? "bg-emerald-500/15 border-emerald-500/30"
-          : "bg-card/40 hover:bg-accent/20"
+          : !cell.bgColor
+            ? "bg-card/40 hover:bg-accent/20 border-border"
+            : "hover:brightness-110"
       }`}
+      style={cellStyle}
     >
       {/* Column header (first row shows col letters) */}
       {row === 0 && (
         <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] text-muted-foreground font-mono select-none">
           {String.fromCharCode(65 + colIndex)}
+        </div>
+      )}
+
+      {/* Mini formatting toolbar — shown on focus */}
+      {focused && (
+        <div className="absolute -top-7 left-0 z-10 flex items-center gap-0.5 bg-card border border-border rounded-md shadow-lg px-1 py-0.5">
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              onUpdate(tableId, row, col, { bold: !cell.bold });
+            }}
+            title="Bold"
+            className={`p-0.5 rounded text-[11px] font-bold transition-colors ${
+              cell.bold
+                ? "bg-primary/20 text-primary"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Bold size={11} />
+          </button>
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              onUpdate(tableId, row, col, { italic: !cell.italic });
+            }}
+            title="Italic"
+            className={`p-0.5 rounded transition-colors ${
+              cell.italic
+                ? "bg-primary/20 text-primary"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Italic size={11} />
+          </button>
+          <div className="w-px h-3 bg-border mx-0.5" />
+          <input
+            type="color"
+            value={cell.bgColor ?? "#00000000"}
+            onMouseDown={(e) => e.stopPropagation()}
+            onChange={(e) =>
+              onUpdate(tableId, row, col, { bgColor: e.target.value })
+            }
+            className="w-5 h-5 rounded cursor-pointer bg-transparent border-none"
+            style={{ padding: "1px" }}
+            title="Cell background color"
+          />
+          {cell.bgColor && (
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onUpdate(tableId, row, col, { bgColor: undefined });
+              }}
+              className="text-[9px] text-muted-foreground hover:text-foreground px-0.5"
+              title="Clear cell background"
+            >
+              ✕
+            </button>
+          )}
         </div>
       )}
 
@@ -465,12 +595,14 @@ function TableCell({
           type="text"
           defaultValue={cell.text}
           onChange={handleTextChange}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           placeholder=""
           className={`flex-1 text-xs bg-transparent outline-none border-none min-w-0 placeholder-muted-foreground/30 ${
             cell.ticked
               ? "line-through text-muted-foreground"
               : "text-foreground"
-          }`}
+          } ${cell.bold ? "font-bold" : ""} ${cell.italic ? "italic" : ""}`}
           style={{ fontFamily: "inherit" }}
         />
       </div>

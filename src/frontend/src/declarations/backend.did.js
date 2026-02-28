@@ -8,10 +8,29 @@
 
 import { IDL } from '@icp-sdk/core/candid';
 
+export const _CaffeineStorageCreateCertificateResult = IDL.Record({
+  'method' : IDL.Text,
+  'blob_hash' : IDL.Text,
+});
+export const _CaffeineStorageRefillInformation = IDL.Record({
+  'proposed_top_up_amount' : IDL.Opt(IDL.Nat),
+});
+export const _CaffeineStorageRefillResult = IDL.Record({
+  'success' : IDL.Opt(IDL.Bool),
+  'topped_up_amount' : IDL.Opt(IDL.Nat),
+});
 export const UserRole = IDL.Variant({
   'admin' : IDL.Null,
   'user' : IDL.Null,
   'guest' : IDL.Null,
+});
+export const FileMetadata = IDL.Record({
+  'id' : IDL.Nat,
+  'blobUrl' : IDL.Text,
+  'mimeType' : IDL.Text,
+  'fileName' : IDL.Text,
+  'sizeBytes' : IDL.Nat,
+  'uploadedAt' : IDL.Text,
 });
 export const UserProfile = IDL.Record({ 'name' : IDL.Text });
 export const ExamSession = IDL.Record({
@@ -80,6 +99,32 @@ export const UserTargets = IDL.Record({
 });
 
 export const idlService = IDL.Service({
+  '_caffeineStorageBlobIsLive' : IDL.Func(
+      [IDL.Vec(IDL.Nat8)],
+      [IDL.Bool],
+      ['query'],
+    ),
+  '_caffeineStorageBlobsToDelete' : IDL.Func(
+      [],
+      [IDL.Vec(IDL.Vec(IDL.Nat8))],
+      ['query'],
+    ),
+  '_caffeineStorageConfirmBlobDeletion' : IDL.Func(
+      [IDL.Vec(IDL.Vec(IDL.Nat8))],
+      [],
+      [],
+    ),
+  '_caffeineStorageCreateCertificate' : IDL.Func(
+      [IDL.Text],
+      [_CaffeineStorageCreateCertificateResult],
+      [],
+    ),
+  '_caffeineStorageRefillCashier' : IDL.Func(
+      [IDL.Opt(_CaffeineStorageRefillInformation)],
+      [_CaffeineStorageRefillResult],
+      [],
+    ),
+  '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
   'addMockScore' : IDL.Func([IDL.Nat], [], []),
   'addNotebookEntry' : IDL.Func(
@@ -105,10 +150,12 @@ export const idlService = IDL.Service({
   'addStudySession' : IDL.Func([IDL.Text, IDL.Float64, IDL.Text], [], []),
   'addSubject' : IDL.Func([IDL.Text, IDL.Text], [], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+  'deleteFileMetadata' : IDL.Func([IDL.Nat], [], []),
   'deleteNotebookEntry' : IDL.Func([IDL.Nat], [], []),
   'deleteNotepadEntry' : IDL.Func([IDL.Nat], [], []),
   'deleteQuestion' : IDL.Func([IDL.Nat], [], []),
   'deleteSubject' : IDL.Func([IDL.Nat], [], []),
+  'getAllFileMetadata' : IDL.Func([], [IDL.Vec(FileMetadata)], ['query']),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
   'getExamSessions' : IDL.Func([], [IDL.Vec(ExamSession)], ['query']),
@@ -142,6 +189,11 @@ export const idlService = IDL.Service({
       [],
       [],
     ),
+  'saveFileMetadata' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Nat, IDL.Text, IDL.Text],
+      [IDL.Nat],
+      [],
+    ),
   'saveMonthlyLog' : IDL.Func([IDL.Text, IDL.Nat], [], []),
   'setQuestionCount' : IDL.Func([IDL.Text, IDL.Nat], [], []),
   'setStudySession' : IDL.Func([IDL.Text, IDL.Float64, IDL.Text], [], []),
@@ -162,10 +214,29 @@ export const idlService = IDL.Service({
 export const idlInitArgs = [];
 
 export const idlFactory = ({ IDL }) => {
+  const _CaffeineStorageCreateCertificateResult = IDL.Record({
+    'method' : IDL.Text,
+    'blob_hash' : IDL.Text,
+  });
+  const _CaffeineStorageRefillInformation = IDL.Record({
+    'proposed_top_up_amount' : IDL.Opt(IDL.Nat),
+  });
+  const _CaffeineStorageRefillResult = IDL.Record({
+    'success' : IDL.Opt(IDL.Bool),
+    'topped_up_amount' : IDL.Opt(IDL.Nat),
+  });
   const UserRole = IDL.Variant({
     'admin' : IDL.Null,
     'user' : IDL.Null,
     'guest' : IDL.Null,
+  });
+  const FileMetadata = IDL.Record({
+    'id' : IDL.Nat,
+    'blobUrl' : IDL.Text,
+    'mimeType' : IDL.Text,
+    'fileName' : IDL.Text,
+    'sizeBytes' : IDL.Nat,
+    'uploadedAt' : IDL.Text,
   });
   const UserProfile = IDL.Record({ 'name' : IDL.Text });
   const ExamSession = IDL.Record({
@@ -228,6 +299,32 @@ export const idlFactory = ({ IDL }) => {
   });
   
   return IDL.Service({
+    '_caffeineStorageBlobIsLive' : IDL.Func(
+        [IDL.Vec(IDL.Nat8)],
+        [IDL.Bool],
+        ['query'],
+      ),
+    '_caffeineStorageBlobsToDelete' : IDL.Func(
+        [],
+        [IDL.Vec(IDL.Vec(IDL.Nat8))],
+        ['query'],
+      ),
+    '_caffeineStorageConfirmBlobDeletion' : IDL.Func(
+        [IDL.Vec(IDL.Vec(IDL.Nat8))],
+        [],
+        [],
+      ),
+    '_caffeineStorageCreateCertificate' : IDL.Func(
+        [IDL.Text],
+        [_CaffeineStorageCreateCertificateResult],
+        [],
+      ),
+    '_caffeineStorageRefillCashier' : IDL.Func(
+        [IDL.Opt(_CaffeineStorageRefillInformation)],
+        [_CaffeineStorageRefillResult],
+        [],
+      ),
+    '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
     'addMockScore' : IDL.Func([IDL.Nat], [], []),
     'addNotebookEntry' : IDL.Func(
@@ -253,10 +350,12 @@ export const idlFactory = ({ IDL }) => {
     'addStudySession' : IDL.Func([IDL.Text, IDL.Float64, IDL.Text], [], []),
     'addSubject' : IDL.Func([IDL.Text, IDL.Text], [], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+    'deleteFileMetadata' : IDL.Func([IDL.Nat], [], []),
     'deleteNotebookEntry' : IDL.Func([IDL.Nat], [], []),
     'deleteNotepadEntry' : IDL.Func([IDL.Nat], [], []),
     'deleteQuestion' : IDL.Func([IDL.Nat], [], []),
     'deleteSubject' : IDL.Func([IDL.Nat], [], []),
+    'getAllFileMetadata' : IDL.Func([], [IDL.Vec(FileMetadata)], ['query']),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
     'getExamSessions' : IDL.Func([], [IDL.Vec(ExamSession)], ['query']),
@@ -288,6 +387,11 @@ export const idlFactory = ({ IDL }) => {
     'saveExamSession' : IDL.Func(
         [IDL.Text, IDL.Nat, IDL.Nat, IDL.Nat, IDL.Text, IDL.Text],
         [],
+        [],
+      ),
+    'saveFileMetadata' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Nat, IDL.Text, IDL.Text],
+        [IDL.Nat],
         [],
       ),
     'saveMonthlyLog' : IDL.Func([IDL.Text, IDL.Nat], [], []),

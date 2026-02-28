@@ -2,11 +2,107 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Coffee, Pause, Play, RotateCcw, Settings, Zap } from "lucide-react";
+import {
+  Coffee,
+  Flame,
+  Pause,
+  Play,
+  RotateCcw,
+  Settings,
+  Zap,
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { TimerMode } from "../App";
+
+const POMODORO_DAYS_KEY = "ssc_pomodoro_days";
+const FOCUS_LOG_KEY = "ssc_focus_log";
+const FOCUS_TARGET_KEY = "ssc_daily_focus_target";
+
+function getTodayDateStr(): string {
+  return new Date().toISOString().split("T")[0];
+}
+
+function loadPomoDays(): string[] {
+  try {
+    const saved = localStorage.getItem(POMODORO_DAYS_KEY);
+    return saved ? (JSON.parse(saved) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePomoDays(days: string[]) {
+  localStorage.setItem(POMODORO_DAYS_KEY, JSON.stringify(days));
+}
+
+function loadFocusLog(): Record<string, number> {
+  try {
+    const saved = localStorage.getItem(FOCUS_LOG_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveFocusLog(log: Record<string, number>) {
+  localStorage.setItem(FOCUS_LOG_KEY, JSON.stringify(log));
+}
+
+function loadFocusTarget(): number {
+  try {
+    const s = localStorage.getItem(FOCUS_TARGET_KEY);
+    return s ? Number(s) : 900; // default 15 hours = 900 min
+  } catch {
+    return 900;
+  }
+}
+
+function computeStreak(days: string[]): number {
+  if (days.length === 0) return 0;
+  const sorted = [...new Set(days)].sort().reverse();
+  const today = getTodayDateStr();
+  let streak = 0;
+  let cursor = new Date(today);
+  for (let i = 0; i < 365; i++) {
+    const key = cursor.toISOString().split("T")[0];
+    if (sorted.includes(key)) {
+      streak++;
+      cursor.setDate(cursor.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
+
+function computeTargetStreak(
+  log: Record<string, number>,
+  targetMins: number,
+): number {
+  const today = getTodayDateStr();
+  let streak = 0;
+  let cursor = new Date(today);
+  for (let i = 0; i < 365; i++) {
+    const key = cursor.toISOString().split("T")[0];
+    if ((log[key] ?? 0) >= targetMins) {
+      streak++;
+      cursor.setDate(cursor.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
+
+function getLast14Days(): string[] {
+  return Array.from({ length: 14 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (13 - i));
+    return d.toISOString().split("T")[0];
+  });
+}
 
 const TIMER_PRESETS: Record<TimerMode, { label: string; color: string }> = {
   work: { label: "Focus", color: "text-primary" },
@@ -33,6 +129,7 @@ export interface TimerTabProps {
   onToggleRunning: () => void;
   onReset: () => void;
   onSetDefault: (seconds: number) => void;
+  onFocusTimeUpdate?: (elapsedSeconds: number) => void;
 }
 
 export default function TimerTab({
@@ -46,10 +143,80 @@ export default function TimerTab({
   onToggleRunning,
   onReset,
   onSetDefault,
+  onFocusTimeUpdate,
 }: TimerTabProps) {
   const [defaultInput, setDefaultInput] = useState(
     String(Math.round(customDefaultSeconds / 60)),
   );
+
+  // ── Streak tracking (session-based) ──────────────────────────────────────
+  const prevSessionsRef = useRef(sessions);
+  const [pomoDays, setPomoDays] = useState<string[]>(loadPomoDays);
+
+  // ── Focus time log ────────────────────────────────────────────────────────
+  const [focusLog, setFocusLog] =
+    useState<Record<string, number>>(loadFocusLog);
+  const [focusTarget, setFocusTarget] = useState(loadFocusTarget);
+  const [focusTargetInput, setFocusTargetInput] = useState(
+    String(Math.round(loadFocusTarget() / 60)),
+  );
+  const sessionStartRef = useRef<number | null>(null);
+  const prevRunning = useRef(running);
+
+  // Track session start/stop for partial focus time
+  useEffect(() => {
+    if (running && !prevRunning.current) {
+      // Timer started
+      sessionStartRef.current = Date.now();
+    } else if (
+      !running &&
+      prevRunning.current &&
+      sessionStartRef.current !== null
+    ) {
+      // Timer paused/stopped — save elapsed time
+      const elapsed = Math.floor((Date.now() - sessionStartRef.current) / 1000);
+      if (elapsed > 0 && mode === "work") {
+        const elapsedMins = Math.floor(elapsed / 60);
+        if (elapsedMins > 0) {
+          const today = getTodayDateStr();
+          setFocusLog((prev) => {
+            const next = { ...prev, [today]: (prev[today] ?? 0) + elapsedMins };
+            saveFocusLog(next);
+            return next;
+          });
+        }
+        onFocusTimeUpdate?.(elapsed);
+      }
+      sessionStartRef.current = null;
+    }
+    prevRunning.current = running;
+  }, [running, mode, onFocusTimeUpdate]);
+
+  useEffect(() => {
+    if (sessions > prevSessionsRef.current) {
+      // A new session was completed — also save focus time for the completed session
+      const today = getTodayDateStr();
+      if (mode === "work") {
+        const sessionMins = Math.round(customDefaultSeconds / 60);
+        setFocusLog((prev) => {
+          const next = { ...prev, [today]: (prev[today] ?? 0) + sessionMins };
+          saveFocusLog(next);
+          return next;
+        });
+      }
+      setPomoDays((prev) => {
+        if (prev.includes(today)) return prev;
+        const next = [...prev, today];
+        savePomoDays(next);
+        return next;
+      });
+    }
+    prevSessionsRef.current = sessions;
+  }, [sessions, mode, customDefaultSeconds]);
+
+  const streak = computeStreak(pomoDays);
+  const targetStreak = computeTargetStreak(focusLog, focusTarget);
+  const last14Days = getLast14Days();
 
   const total =
     mode === "work" ? customDefaultSeconds : mode === "short" ? 300 : 900;
@@ -73,13 +240,27 @@ export default function TimerTab({
   return (
     <div className="p-6 max-w-lg mx-auto">
       {/* Page header */}
-      <div className="mb-6">
-        <h2 className="font-display text-2xl font-bold text-foreground">
-          Pomodoro Timer
-        </h2>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Stay focused with timed study sessions
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="font-display text-2xl font-bold text-foreground">
+            Pomodoro Timer
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Stay focused with timed study sessions
+          </p>
+        </div>
+        {streak > 0 && (
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/15 border border-primary/30 shrink-0"
+          >
+            <Flame size={14} className="text-primary" />
+            <span className="text-xs font-bold text-primary">
+              {streak} day{streak !== 1 ? "s" : ""}
+            </span>
+          </motion.div>
+        )}
       </div>
 
       {/* Mode selector */}
@@ -291,7 +472,7 @@ export default function TimerTab({
       </Card>
 
       {/* Tips card */}
-      <Card className="border-border">
+      <Card className="border-border mb-4">
         <CardContent className="p-4">
           <div className="flex items-start gap-3">
             <div className="w-7 h-7 rounded-lg bg-primary/15 flex items-center justify-center shrink-0 mt-0.5">
@@ -310,7 +491,7 @@ export default function TimerTab({
       </Card>
 
       {/* Quick presets */}
-      <div className="mt-4 grid grid-cols-2 gap-2">
+      <div className="mb-4 grid grid-cols-2 gap-2">
         <button
           type="button"
           onClick={() => onModeChange("short")}
@@ -336,6 +517,113 @@ export default function TimerTab({
           </p>
         </button>
       </div>
+
+      {/* ── Daily Focus Log ──────────────────────────────────────────────────── */}
+      <Card className="border-border mb-4">
+        <CardHeader className="pb-3">
+          <CardTitle className="font-display text-sm font-semibold flex items-center gap-2">
+            <Flame size={14} className="text-primary" />
+            Daily Focus Log
+            {targetStreak > 0 && (
+              <div className="ml-auto flex items-center gap-1.5 px-2 py-1 rounded-full bg-amber-500/10 border border-amber-500/20">
+                <Flame size={11} className="text-amber-400" />
+                <span className="text-[10px] font-bold text-amber-400">
+                  {targetStreak}d target streak
+                </span>
+              </div>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* Target setting */}
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground whitespace-nowrap">
+              Daily Target (min):
+            </Label>
+            <Input
+              type="number"
+              min={1}
+              max={1440}
+              value={focusTargetInput}
+              onChange={(e) => setFocusTargetInput(e.target.value)}
+              onBlur={() => {
+                const v = Number.parseInt(focusTargetInput, 10);
+                if (!Number.isNaN(v) && v > 0) {
+                  setFocusTarget(v);
+                  localStorage.setItem(FOCUS_TARGET_KEY, String(v));
+                }
+              }}
+              className="h-7 text-xs bg-muted/40 border-input w-20 font-mono"
+            />
+            <span className="text-xs text-muted-foreground">
+              = {Math.floor(focusTarget / 60)}h {focusTarget % 60}m
+            </span>
+          </div>
+
+          {/* Last 14 days table */}
+          <div className="rounded-lg border border-border overflow-hidden">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-muted/40">
+                  <th className="px-2 py-1.5 text-left text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                    Date
+                  </th>
+                  <th className="px-2 py-1.5 text-right text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                    Minutes
+                  </th>
+                  <th className="px-2 py-1.5 text-right text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                    Hours
+                  </th>
+                  <th className="px-2 py-1.5 text-center text-[9px] font-bold text-muted-foreground uppercase tracking-wider w-12">
+                    Target
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {last14Days.map((date) => {
+                  const mins = focusLog[date] ?? 0;
+                  const hrs = (mins / 60).toFixed(1);
+                  const met = mins >= focusTarget;
+                  const isToday = date === getTodayDateStr();
+                  return (
+                    <tr
+                      key={date}
+                      className={`border-t border-border ${isToday ? "bg-primary/5" : ""}`}
+                    >
+                      <td className="px-2 py-1.5 font-mono text-muted-foreground">
+                        {isToday ? "Today" : date.slice(5)}
+                      </td>
+                      <td className="px-2 py-1.5 text-right font-mono text-foreground">
+                        {mins}
+                      </td>
+                      <td className="px-2 py-1.5 text-right font-mono text-foreground">
+                        {hrs}h
+                      </td>
+                      <td className="px-2 py-1.5 text-center">
+                        {mins > 0 ? (
+                          met ? (
+                            <span className="text-emerald-400">✓</span>
+                          ) : (
+                            <span className="text-muted-foreground/50">✗</span>
+                          )
+                        ) : (
+                          <span className="text-muted-foreground/30">–</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground">
+            Focus time accumulates from all work sessions (completed and
+            paused). Target streak counts consecutive days meeting the daily
+            target.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -3,8 +3,11 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import {
   BarChart3,
+  Bell,
   BookOpen,
+  CalendarDays,
   Clock,
+  FolderOpen,
   GraduationCap,
   Home,
   LogOut,
@@ -18,6 +21,7 @@ import {
   User,
 } from "lucide-react";
 import { motion } from "motion/react";
+import { useEffect, useState } from "react";
 import type { TabId } from "../App";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 
@@ -28,6 +32,50 @@ interface SidebarProps {
   search: string;
   onSearchChange: (val: string) => void;
   onOpenAppearance: () => void;
+  onOpenNotifications: () => void;
+}
+
+function computeNotificationCount(): number {
+  let count = 0;
+  try {
+    // Daily routine check
+    const today = new Date().toISOString().split("T")[0];
+    const routineKey = `ssc_routine_day_${today}`;
+    const doneKey = `ssc_routine_done_${today}`;
+    const rows = JSON.parse(localStorage.getItem(routineKey) ?? "[]") as {
+      id: number;
+    }[];
+    const done = new Set(
+      JSON.parse(localStorage.getItem(doneKey) ?? "[]") as number[],
+    );
+    const incomplete = rows.filter((r) => !done.has(r.id)).length;
+    if (rows.length > 0 && incomplete > 0) count++;
+
+    // Study plan check
+    const sessions = JSON.parse(
+      localStorage.getItem("ssc_study_sessions") ?? "[]",
+    ) as { date: string; hours: number }[];
+    const todayHours = sessions
+      .filter((s) => s.date === today)
+      .reduce((a, b) => a + b.hours, 0);
+    const targets = JSON.parse(localStorage.getItem("ssc_targets") ?? "{}") as {
+      dailyStudyHoursTarget?: number;
+    };
+    const target = targets?.dailyStudyHoursTarget ?? 15;
+    if (todayHours < target) count++;
+
+    // Questions check
+    const qProgress = JSON.parse(
+      localStorage.getItem("ssc_question_progress") ?? "[]",
+    ) as { subjectName: string; count: number }[];
+    const totalQ = qProgress.reduce((a, b) => a + Number(b.count), 0);
+    const qTargets = JSON.parse(
+      localStorage.getItem("ssc_targets") ?? "{}",
+    ) as { totalQuestionsGoal?: number };
+    const qGoal = qTargets?.totalQuestionsGoal ?? 9000;
+    if (totalQ < qGoal) count++;
+  } catch {}
+  return count;
 }
 
 const navItems: { id: TabId; label: string; icon: React.ReactNode }[] = [
@@ -40,7 +88,13 @@ const navItems: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "exam", label: "Exam Mode", icon: <GraduationCap size={18} /> },
   { id: "notebook", label: "Notebook", icon: <NotebookPen size={18} /> },
   { id: "notepad", label: "Notepad", icon: <StickyNote size={18} /> },
+  {
+    id: "dailyroutine",
+    label: "Daily Routine",
+    icon: <CalendarDays size={18} />,
+  },
   { id: "tablemaker", label: "Table Maker", icon: <Table size={18} /> },
+  { id: "files", label: "My Files", icon: <FolderOpen size={18} /> },
 ];
 
 function truncatePrincipal(principal: string): string {
@@ -55,9 +109,20 @@ export default function Sidebar({
   search,
   onSearchChange,
   onOpenAppearance,
+  onOpenNotifications,
 }: SidebarProps) {
   const { identity, clear } = useInternetIdentity();
   const principalStr = identity?.getPrincipal().toString() ?? "";
+  const [notifCount, setNotifCount] = useState(0);
+
+  useEffect(() => {
+    setNotifCount(computeNotificationCount());
+    const interval = setInterval(
+      () => setNotifCount(computeNotificationCount()),
+      30000,
+    );
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <aside className="w-64 shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col h-screen sticky top-0 overflow-hidden">
@@ -144,7 +209,7 @@ export default function Sidebar({
           </div>
         )}
 
-        {/* Appearance + Logout row */}
+        {/* Appearance + Notifications + Logout row */}
         <div className="flex gap-1.5">
           <Button
             variant="ghost"
@@ -155,6 +220,23 @@ export default function Sidebar({
           >
             <Palette size={12} />
             Appearance
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              onOpenNotifications();
+              setNotifCount(computeNotificationCount());
+            }}
+            className="relative h-7 px-2 text-xs text-muted-foreground hover:text-primary hover:bg-primary/10"
+            title="Notifications"
+          >
+            <Bell size={12} />
+            {notifCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-destructive text-[8px] text-white flex items-center justify-center font-bold leading-none">
+                {notifCount > 9 ? "9+" : notifCount}
+              </span>
+            )}
           </Button>
           <Button
             variant="ghost"

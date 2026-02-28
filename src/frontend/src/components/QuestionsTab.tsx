@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,9 +18,13 @@ import {
   CheckCircle2,
   Clock,
   Flame,
+  Pause,
+  Play,
   PlusCircle,
+  RotateCcw,
   Star,
   Target,
+  Timer,
   Trophy,
   Zap,
 } from "lucide-react";
@@ -198,6 +203,73 @@ export default function QuestionsTab() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Per-question solve time ───────────────────────────────────────────────
+  const [perQTimeSecs, setPerQTimeSecs] = useState<number>(() => {
+    const s = localStorage.getItem("ssc_per_q_time");
+    return s ? Number(s) : 60;
+  });
+
+  const savePerQTime = (secs: number) => {
+    setPerQTimeSecs(secs);
+    localStorage.setItem("ssc_per_q_time", String(secs));
+  };
+
+  const PER_Q_PRESETS = [
+    { label: "10s", secs: 10 },
+    { label: "30s", secs: 30 },
+    { label: "1m", secs: 60 },
+    { label: "2m", secs: 120 },
+    { label: "3m", secs: 180 },
+    { label: "5m", secs: 300 },
+  ];
+
+  // ── Subject question countdown timer (local only) ─────────────────────────
+  const [qTimerSecs, setQTimerSecs] = useState(0);
+  const [qTimerRunning, setQTimerRunning] = useState(false);
+  const [qTimerInitial, setQTimerInitial] = useState(0);
+  const qTimerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Reset timer when subject, count, or per-question time change
+  useEffect(() => {
+    setQTimerRunning(false);
+    if (qTimerIntervalRef.current) clearInterval(qTimerIntervalRef.current);
+    const n = Number.parseInt(countInput, 10);
+    if (subject && !Number.isNaN(n) && n > 0) {
+      const secs = n * perQTimeSecs; // per-question time * count
+      setQTimerSecs(secs);
+      setQTimerInitial(secs);
+    } else {
+      setQTimerSecs(0);
+      setQTimerInitial(0);
+    }
+  }, [subject, countInput, perQTimeSecs]);
+
+  // Countdown tick
+  useEffect(() => {
+    if (qTimerRunning) {
+      qTimerIntervalRef.current = setInterval(() => {
+        setQTimerSecs((s) => {
+          if (s <= 1) {
+            setQTimerRunning(false);
+            toast.success("Question session complete!");
+            return 0;
+          }
+          return s - 1;
+        });
+      }, 1000);
+    } else {
+      if (qTimerIntervalRef.current) clearInterval(qTimerIntervalRef.current);
+    }
+    return () => {
+      if (qTimerIntervalRef.current) clearInterval(qTimerIntervalRef.current);
+    };
+  }, [qTimerRunning]);
+
+  const qTimerMins = Math.floor(qTimerSecs / 60);
+  const qTimerRemSecs = qTimerSecs % 60;
+  const showQTimer =
+    subject !== "" && Number.parseInt(countInput, 10) > 0 && qTimerInitial > 0;
 
   // Build a map from backend data
   const progressMap: Record<string, number> = {};
@@ -507,6 +579,120 @@ export default function QuestionsTab() {
                     are filled.
                   </p>
                 </div>
+
+                {/* Per-question time presets + slider */}
+                <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Timer size={12} className="text-primary" />
+                    <span className="text-xs font-semibold text-foreground">
+                      Per-Question Time
+                    </span>
+                    <span className="ml-auto text-xs font-mono text-primary font-bold">
+                      {perQTimeSecs < 60
+                        ? `${perQTimeSecs}s`
+                        : `${Math.floor(perQTimeSecs / 60)}m ${perQTimeSecs % 60 > 0 ? `${perQTimeSecs % 60}s` : ""}`}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {PER_Q_PRESETS.map((p) => (
+                      <button
+                        key={p.secs}
+                        type="button"
+                        onClick={() => savePerQTime(p.secs)}
+                        className={`px-2 py-1 rounded text-[10px] font-semibold border transition-all ${
+                          perQTimeSecs === p.secs
+                            ? "bg-primary/20 border-primary text-primary"
+                            : "border-border text-muted-foreground hover:text-foreground hover:bg-accent/30"
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-[9px] text-muted-foreground">
+                      10s
+                    </span>
+                    <input
+                      type="range"
+                      min={10}
+                      max={300}
+                      step={5}
+                      value={perQTimeSecs}
+                      onChange={(e) => savePerQTime(Number(e.target.value))}
+                      className="flex-1 h-1.5 accent-primary cursor-pointer"
+                    />
+                    <span className="text-[9px] text-muted-foreground">5m</span>
+                  </div>
+                </div>
+
+                {/* Question session countdown timer */}
+                {showQTimer && (
+                  <div className="rounded-xl border border-border bg-muted/30 p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Timer size={13} className="text-primary shrink-0" />
+                      <span className="text-xs font-semibold text-foreground">
+                        Session Timer
+                      </span>
+                      <span className="ml-auto font-mono text-xl font-bold text-primary tabular-nums">
+                        {String(qTimerMins).padStart(2, "0")}:
+                        {String(qTimerRemSecs).padStart(2, "0")}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      {perQTimeSecs < 60
+                        ? `${perQTimeSecs}s`
+                        : `${Math.floor(perQTimeSecs / 60)}m`}
+                      /question · {Number.parseInt(countInput, 10)} questions ·
+                      at{" "}
+                      {perQTimeSecs < 60
+                        ? `${perQTimeSecs}s`
+                        : `${Math.floor(perQTimeSecs / 60)}m`}
+                      /question
+                    </p>
+                    {/* Mini progress bar */}
+                    <div className="h-1 rounded-full bg-muted overflow-hidden">
+                      <motion.div
+                        className="h-full bg-primary rounded-full"
+                        animate={{
+                          width: `${((qTimerInitial - qTimerSecs) / qTimerInitial) * 100}%`,
+                        }}
+                        transition={{ duration: 0.5 }}
+                      />
+                    </div>
+                    <div className="flex gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 h-7 text-xs gap-1"
+                        onClick={() => setQTimerRunning((r) => !r)}
+                      >
+                        {qTimerRunning ? (
+                          <>
+                            <Pause size={11} />
+                            Pause
+                          </>
+                        ) : (
+                          <>
+                            <Play size={11} />
+                            {qTimerSecs === qTimerInitial ? "Start" : "Resume"}
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs px-2 text-muted-foreground"
+                        onClick={() => {
+                          setQTimerRunning(false);
+                          setQTimerSecs(qTimerInitial);
+                        }}
+                      >
+                        <RotateCcw size={11} />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

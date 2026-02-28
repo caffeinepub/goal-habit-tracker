@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,8 +18,12 @@ import {
   CheckCircle2,
   Clock,
   Flame,
+  Pause,
+  Play,
   PlusCircle,
+  RotateCcw,
   Target,
+  Timer,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -146,6 +151,93 @@ export default function StudyPlanTab() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Subject countdown timer (local only) ──────────────────────────────────
+  const [subjectTimerSecs, setSubjectTimerSecs] = useState(0);
+  const [subjectTimerRunning, setSubjectTimerRunning] = useState(false);
+  const [subjectTimerInitial, setSubjectTimerInitial] = useState(0);
+  const subjectTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Actual elapsed time tracking ──────────────────────────────────────────
+  const [elapsedSecs, setElapsedSecs] = useState(0);
+  const [todayTotalElapsedSecs, setTodayTotalElapsedSecs] = useState(0);
+  const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Reset timer when subject or hours change
+  useEffect(() => {
+    setSubjectTimerRunning(false);
+    if (subjectTimerRef.current) clearInterval(subjectTimerRef.current);
+    if (elapsedRef.current) clearInterval(elapsedRef.current);
+    setElapsedSecs(0);
+    const h = Number.parseFloat(hoursInput);
+    if (subject && !Number.isNaN(h) && h > 0) {
+      const secs = Math.round(h * 3600);
+      setSubjectTimerSecs(secs);
+      setSubjectTimerInitial(secs);
+    } else {
+      setSubjectTimerSecs(0);
+      setSubjectTimerInitial(0);
+    }
+  }, [subject, hoursInput]);
+
+  // Elapsed counter (runs when timer is running)
+  // We use a ref to snapshot elapsedSecs so the cleanup doesn't create a stale-closure dep cycle
+  const elapsedSecsRef = useRef(0);
+  useEffect(() => {
+    if (subjectTimerRunning) {
+      elapsedRef.current = setInterval(() => {
+        elapsedSecsRef.current += 1;
+        setElapsedSecs(elapsedSecsRef.current);
+      }, 1000);
+    } else {
+      if (elapsedRef.current) clearInterval(elapsedRef.current);
+      // Add elapsed to today's total when paused/stopped
+      if (elapsedSecsRef.current > 0) {
+        setTodayTotalElapsedSecs((prev) => prev + elapsedSecsRef.current);
+        elapsedSecsRef.current = 0;
+        setElapsedSecs(0);
+      }
+    }
+    return () => {
+      if (elapsedRef.current) clearInterval(elapsedRef.current);
+    };
+  }, [subjectTimerRunning]);
+
+  // Countdown tick
+  useEffect(() => {
+    if (subjectTimerRunning) {
+      subjectTimerRef.current = setInterval(() => {
+        setSubjectTimerSecs((s) => {
+          if (s <= 1) {
+            setSubjectTimerRunning(false);
+            toast.success("Study session complete!");
+            return 0;
+          }
+          return s - 1;
+        });
+      }, 1000);
+    } else {
+      if (subjectTimerRef.current) clearInterval(subjectTimerRef.current);
+    }
+    return () => {
+      if (subjectTimerRef.current) clearInterval(subjectTimerRef.current);
+    };
+  }, [subjectTimerRunning]);
+
+  const subjectTimerMins = Math.floor(subjectTimerSecs / 60);
+  const subjectTimerRemSecs = subjectTimerSecs % 60;
+  const showSubjectTimer =
+    subject !== "" &&
+    Number.parseFloat(hoursInput) > 0 &&
+    subjectTimerInitial > 0;
+
+  // Formatted elapsed time
+  const totalElapsed = todayTotalElapsedSecs + elapsedSecs;
+  const elapsedH = Math.floor(totalElapsed / 3600);
+  const elapsedM = Math.floor((totalElapsed % 3600) / 60);
+  const elapsedS = totalElapsed % 60;
+  const elapsedDisplay = `${String(elapsedH).padStart(2, "0")}:${String(elapsedM).padStart(2, "0")}:${String(elapsedS).padStart(2, "0")}`;
+  const currentElapsedDisplay = `${String(Math.floor(elapsedSecs / 3600)).padStart(2, "0")}:${String(Math.floor((elapsedSecs % 3600) / 60)).padStart(2, "0")}:${String(elapsedSecs % 60).padStart(2, "0")}`;
 
   const today = getTodayDate();
   const todaysSessions = sessions.filter((s) => s.date === today);
@@ -306,13 +398,13 @@ export default function StudyPlanTab() {
                   className="h-3 bg-muted mb-3 rounded-full"
                 />
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3 mb-3">
                   <div className="text-center p-2.5 rounded-lg bg-muted/40">
                     <p className="font-display text-xl font-bold text-primary leading-none">
                       {formatHours(todayHours)}
                     </p>
                     <p className="text-[10px] text-muted-foreground mt-1">
-                      Studied
+                      Planned
                     </p>
                   </div>
                   <div className="text-center p-2.5 rounded-lg bg-muted/40">
@@ -323,13 +415,27 @@ export default function StudyPlanTab() {
                       Remaining
                     </p>
                   </div>
-                  <div className="text-center p-2.5 rounded-lg bg-muted/40">
-                    <p className="font-display text-xl font-bold text-foreground leading-none">
-                      {Math.round(dailyPct)}%
+                </div>
+                {/* Actual elapsed time */}
+                <div className="rounded-lg bg-primary/8 border border-primary/15 p-2.5 flex items-center gap-2">
+                  <Timer size={13} className="text-primary shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-[10px] text-muted-foreground">
+                      Actual time today (timer-based)
                     </p>
-                    <p className="text-[10px] text-muted-foreground mt-1">
-                      Complete
+                    <p className="font-mono text-sm font-bold text-primary tabular-nums">
+                      {elapsedDisplay}
                     </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-muted-foreground">
+                      {Math.round(dailyPct)}% planned
+                    </p>
+                    {subjectTimerRunning && (
+                      <p className="text-[10px] font-mono text-emerald-400">
+                        +{currentElapsedDisplay}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -418,6 +524,65 @@ export default function StudyPlanTab() {
                     Auto-saves when subject and hours are both filled
                   </p>
                 </div>
+
+                {/* Subject countdown timer */}
+                {showSubjectTimer && (
+                  <div className="rounded-xl border border-border bg-muted/30 p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Timer size={13} className="text-primary shrink-0" />
+                      <span className="text-xs font-semibold text-foreground">
+                        Session Timer
+                      </span>
+                      <span className="ml-auto font-mono text-xl font-bold text-primary tabular-nums">
+                        {String(subjectTimerMins).padStart(2, "0")}:
+                        {String(subjectTimerRemSecs).padStart(2, "0")}
+                      </span>
+                    </div>
+                    {/* Mini progress bar */}
+                    <div className="h-1 rounded-full bg-muted overflow-hidden">
+                      <motion.div
+                        className="h-full bg-primary rounded-full"
+                        animate={{
+                          width: `${((subjectTimerInitial - subjectTimerSecs) / subjectTimerInitial) * 100}%`,
+                        }}
+                        transition={{ duration: 0.5 }}
+                      />
+                    </div>
+                    <div className="flex gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 h-7 text-xs gap-1"
+                        onClick={() => setSubjectTimerRunning((r) => !r)}
+                      >
+                        {subjectTimerRunning ? (
+                          <>
+                            <Pause size={11} />
+                            Pause
+                          </>
+                        ) : (
+                          <>
+                            <Play size={11} />
+                            {subjectTimerSecs === subjectTimerInitial
+                              ? "Start"
+                              : "Resume"}
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs px-2 text-muted-foreground"
+                        onClick={() => {
+                          setSubjectTimerRunning(false);
+                          setSubjectTimerSecs(subjectTimerInitial);
+                        }}
+                      >
+                        <RotateCcw size={11} />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

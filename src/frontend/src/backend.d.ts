@@ -7,8 +7,21 @@ export interface None {
     __kind__: "None";
 }
 export type Option<T> = Some<T> | None;
-export interface UserProfile {
+export interface MonthlyLogEntry {
+    date: string;
+    count: bigint;
+}
+export interface FileMetadata {
+    id: bigint;
+    blobUrl: string;
+    mimeType: string;
+    fileName: string;
+    sizeBytes: bigint;
+    uploadedAt: string;
+}
+export interface SubjectTarget {
     name: string;
+    target: bigint;
 }
 export interface ExamSession {
     id: bigint;
@@ -19,9 +32,15 @@ export interface ExamSession {
     totalQuestions: bigint;
     correctAnswers: bigint;
 }
-export interface MonthlyLogEntry {
-    date: string;
+export interface SubjectQuestionProgress {
+    subjectName: string;
     count: bigint;
+}
+export interface UserTargets {
+    dailyStudyHoursTarget: number;
+    subjectTargets: Array<SubjectTarget>;
+    planTotalDays: bigint;
+    totalQuestionsGoal: bigint;
 }
 export interface NotebookEntry {
     id: bigint;
@@ -31,9 +50,12 @@ export interface NotebookEntry {
     createdAt: string;
     updatedAt: string;
 }
-export interface SubjectTarget {
-    name: string;
-    target: bigint;
+export interface NotepadEntry {
+    id: bigint;
+    content: string;
+    subject: string;
+    createdAt: string;
+    updatedAt: string;
 }
 export interface StudySession {
     hours: number;
@@ -50,13 +72,6 @@ export interface Question {
     questionType: string;
     options: Array<string>;
 }
-export interface NotepadEntry {
-    id: bigint;
-    content: string;
-    subject: string;
-    createdAt: string;
-    updatedAt: string;
-}
 export interface Subject {
     id: bigint;
     days: Array<boolean>;
@@ -64,15 +79,8 @@ export interface Subject {
     description: string;
     isWeak: boolean;
 }
-export interface SubjectQuestionProgress {
-    subjectName: string;
-    count: bigint;
-}
-export interface UserTargets {
-    dailyStudyHoursTarget: number;
-    subjectTargets: Array<SubjectTarget>;
-    planTotalDays: bigint;
-    totalQuestionsGoal: bigint;
+export interface UserProfile {
+    name: string;
 }
 export enum UserRole {
     admin = "admin",
@@ -88,10 +96,12 @@ export interface backendInterface {
     addStudySession(subjectName: string, hours: number, date: string): Promise<void>;
     addSubject(name: string, description: string): Promise<void>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
+    deleteFileMetadata(fileId: bigint): Promise<void>;
     deleteNotebookEntry(id: bigint): Promise<void>;
     deleteNotepadEntry(id: bigint): Promise<void>;
     deleteQuestion(id: bigint): Promise<void>;
     deleteSubject(subjectId: bigint): Promise<void>;
+    getAllFileMetadata(): Promise<Array<FileMetadata>>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
     getExamSessions(): Promise<Array<ExamSession>>;
@@ -109,6 +119,7 @@ export interface backendInterface {
     isCallerAdmin(): Promise<boolean>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     saveExamSession(subject: string, totalQuestions: bigint, correctAnswers: bigint, timeTakenSeconds: bigint, difficulty: string, completedAt: string): Promise<void>;
+    saveFileMetadata(fileName: string, mimeType: string, sizeBytes: bigint, blobUrl: string, uploadedAt: string): Promise<bigint>;
     saveMonthlyLog(date: string, count: bigint): Promise<void>;
     setQuestionCount(subjectName: string, count: bigint): Promise<void>;
     setStudySession(subjectName: string, hours: number, date: string): Promise<void>;

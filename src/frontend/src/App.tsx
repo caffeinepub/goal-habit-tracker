@@ -3,13 +3,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import AddSubjectTab from "./components/AddSubjectTab";
 import AnalyticsTab from "./components/AnalyticsTab";
-import AppearancePanel, { type AppTheme } from "./components/AppearancePanel";
+import AppearancePanel, {
+  THEMES,
+  type AppearanceSettings,
+} from "./components/AppearancePanel";
+import DailyRoutineTab from "./components/DailyRoutineTab";
 import ExamTab from "./components/ExamTab";
+import FilesTab from "./components/FilesTab";
 import FloatingTimerWidget from "./components/FloatingTimerWidget";
 import HomeTab from "./components/HomeTab";
 import LoginGate from "./components/LoginGate";
 import NotebookTab from "./components/NotebookTab";
 import NotepadTab from "./components/NotepadTab";
+import NotificationsPanel from "./components/NotificationsPanel";
 import QuestionsTab from "./components/QuestionsTab";
 import Sidebar from "./components/Sidebar";
 import StudyPlanTab from "./components/StudyPlanTab";
@@ -28,7 +34,9 @@ export type TabId =
   | "exam"
   | "notebook"
   | "notepad"
-  | "tablemaker";
+  | "dailyroutine"
+  | "tablemaker"
+  | "files";
 
 export type TimerMode = "work" | "short" | "long";
 
@@ -49,45 +57,105 @@ const SESSION_TIPS = [
   "Review your notes after the session",
 ];
 
+const DEFAULT_APPEARANCE: AppearanceSettings = {
+  theme: "dark",
+  textColor: "#e8e0d0",
+  font: "Satoshi",
+  fontSize: 15,
+  accentColor: "#c0392b",
+  timeFormat: "12h",
+};
+
+function loadAppearance(): AppearanceSettings {
+  try {
+    const saved = localStorage.getItem("ssc_appearance_v2");
+    if (saved) return { ...DEFAULT_APPEARANCE, ...JSON.parse(saved) };
+  } catch {}
+  // Migrate legacy keys
+  return {
+    theme:
+      (localStorage.getItem("ssc_theme") as AppearanceSettings["theme"]) ??
+      "dark",
+    textColor: localStorage.getItem("ssc_text_color") ?? "#e8e0d0",
+    font: localStorage.getItem("ssc_font") ?? "Satoshi",
+    fontSize: 15,
+    accentColor: "#c0392b",
+    timeFormat: "12h" as const,
+  };
+}
+
 export default function App() {
   const { identity, isInitializing } = useInternetIdentity();
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [search, setSearch] = useState("");
 
-  // ─── Appearance state ──────────────────────────────────────────────────────
+  // ─── Notifications panel ──────────────────────────────────────────────────
+  const [notificationsPanelOpen, setNotificationsPanelOpen] = useState(false);
+
+  // ─── Appearance state (unified) ───────────────────────────────────────────
   const [appearancePanelOpen, setAppearancePanelOpen] = useState(false);
-  const [theme, setTheme] = useState<AppTheme>(() => {
-    return (localStorage.getItem("ssc_theme") as AppTheme) ?? "dark";
-  });
-  const [textColor, setTextColor] = useState<string>(() => {
-    return localStorage.getItem("ssc_text_color") ?? "#e8e0d0";
-  });
-  const [appFont, setAppFont] = useState<string>(() => {
-    return localStorage.getItem("ssc_font") ?? "Satoshi";
-  });
+  const [appearance, setAppearance] =
+    useState<AppearanceSettings>(loadAppearance);
 
-  // Apply theme/font/color on mount and changes
+  const handleAppearanceChange = useCallback(
+    (updated: Partial<AppearanceSettings>) => {
+      setAppearance((prev) => {
+        const next = { ...prev, ...updated };
+        localStorage.setItem("ssc_appearance_v2", JSON.stringify(next));
+        return next;
+      });
+    },
+    [],
+  );
+
+  // Apply theme class to <html>
   useEffect(() => {
-    if (theme === "light") {
-      document.documentElement.classList.add("light");
-    } else {
-      document.documentElement.classList.remove("light");
+    const html = document.documentElement;
+    // Remove all theme classes
+    for (const t of THEMES) html.classList.remove(t.cssClass);
+    // Remove legacy "light" class
+    html.classList.remove("light");
+    // Add new theme class
+    const themeDef = THEMES.find((t) => t.id === appearance.theme);
+    if (themeDef) {
+      html.classList.add(themeDef.cssClass);
+      // Keep "light" class for light theme for backward compat
+      if (appearance.theme === "light") html.classList.add("light");
     }
-    localStorage.setItem("ssc_theme", theme);
-  }, [theme]);
+  }, [appearance.theme]);
 
+  // Apply text color
   useEffect(() => {
     document.documentElement.style.setProperty(
       "--foreground-custom",
-      textColor,
+      appearance.textColor,
     );
-    localStorage.setItem("ssc_text_color", textColor);
-  }, [textColor]);
+  }, [appearance.textColor]);
 
+  // Apply font family
   useEffect(() => {
-    document.documentElement.style.setProperty("--app-font", `'${appFont}'`);
-    localStorage.setItem("ssc_font", appFont);
-  }, [appFont]);
+    document.documentElement.style.setProperty(
+      "--app-font",
+      `'${appearance.font}'`,
+    );
+  }, [appearance.font]);
+
+  // Apply font size
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--app-font-size",
+      `${appearance.fontSize}px`,
+    );
+    document.documentElement.style.fontSize = `${appearance.fontSize}px`;
+  }, [appearance.fontSize]);
+
+  // Apply accent color override
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--accent-color-override",
+      appearance.accentColor,
+    );
+  }, [appearance.accentColor]);
 
   // ─── Timer state (lifted to App for floating widget) ──────────────────────
   const [timerMode, setTimerMode] = useState<TimerMode>("work");
@@ -251,19 +319,21 @@ export default function App() {
         search={search}
         onSearchChange={setSearch}
         onOpenAppearance={() => setAppearancePanelOpen((v) => !v)}
+        onOpenNotifications={() => setNotificationsPanelOpen((v) => !v)}
       />
 
       {/* Appearance Panel */}
       {appearancePanelOpen && (
         <AppearancePanel
-          theme={theme}
-          textColor={textColor}
-          font={appFont}
-          onThemeChange={setTheme}
-          onTextColorChange={setTextColor}
-          onFontChange={setAppFont}
+          settings={appearance}
+          onChange={handleAppearanceChange}
           onClose={() => setAppearancePanelOpen(false)}
         />
+      )}
+
+      {/* Notifications Panel */}
+      {notificationsPanelOpen && (
+        <NotificationsPanel onClose={() => setNotificationsPanelOpen(false)} />
       )}
 
       <main className="flex-1 overflow-y-auto min-h-screen">
@@ -305,7 +375,11 @@ export default function App() {
         {activeTab === "exam" && <ExamTab />}
         {activeTab === "notebook" && <NotebookTab />}
         {activeTab === "notepad" && <NotepadTab />}
+        {activeTab === "dailyroutine" && (
+          <DailyRoutineTab timeFormat={appearance.timeFormat ?? "12h"} />
+        )}
         {activeTab === "tablemaker" && <TableMakerTab />}
+        {activeTab === "files" && <FilesTab />}
       </main>
 
       {/* Floating Timer Widget */}

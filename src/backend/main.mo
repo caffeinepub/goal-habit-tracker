@@ -1,10 +1,9 @@
 import Map "mo:core/Map";
+import Runtime "mo:core/Runtime";
 import Nat "mo:core/Nat";
 import Array "mo:core/Array";
 import Principal "mo:core/Principal";
-import Set "mo:core/Set";
-import Runtime "mo:core/Runtime";
-
+import MixinStorage "blob-storage/Mixin";
 import MixinAuthorization "authorization/MixinAuthorization";
 import AccessControl "authorization/access-control";
 
@@ -59,13 +58,12 @@ actor {
     planTotalDays : Nat;
   };
 
-  // New Types for Question Bank, Exam Sessions, Notebook, Notepad
   type Question = {
     id : Nat;
     subject : Text;
     questionText : Text;
     questionType : Text;
-    options : [Text]; // For MCQ
+    options : [Text];
     correctAnswer : Text;
     difficulty : Text;
     createdAt : Text;
@@ -109,8 +107,23 @@ actor {
     notepadEntries : [NotepadEntry];
   };
 
+  type FileMetadata = {
+    id : Nat;
+    fileName : Text;
+    mimeType : Text;
+    sizeBytes : Nat;
+    blobUrl : Text;
+    uploadedAt : Text;
+  };
+
+  type FileMetadataStore = {
+    nextFileId : Nat;
+    files : [FileMetadata];
+  };
+
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
+  include MixinStorage();
 
   // Persistent stores
   let nextSubjectIdStore = Map.empty<Principal, Nat>();
@@ -118,28 +131,23 @@ actor {
   let userProfiles = Map.empty<Principal, UserProfile>();
   let userTargetsStore = Map.empty<Principal, UserTargets>();
   let userEntriesStore = Map.empty<Principal, UserEntries>();
+  let fileMetadataStore = Map.empty<Principal, FileMetadataStore>();
 
-  // Helper function to auto-register authenticated users
+  // Authentication helper functions
   func ensureUserRegistered(caller : Principal) {
-    // Check if caller is anonymous
     if (caller.isAnonymous()) {
       Runtime.trap("Unauthorized: Anonymous users cannot access this resource");
     };
-    
-    // Auto-register authenticated users who don't have a role yet
+
     let currentRole = AccessControl.getUserRole(accessControlState, caller);
     switch (currentRole) {
       case (#guest) {
-        // Auto-assign user role to authenticated non-anonymous callers
         AccessControl.assignRole(accessControlState, caller, caller, #user);
       };
-      case (#user or #admin) {
-        // Already registered, do nothing
-      };
+      case (#user or #admin) {};
     };
   };
 
-  // Helper function to check user permission with auto-registration
   func requireUserPermission(caller : Principal) {
     ensureUserRegistered(caller);
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
@@ -209,7 +217,7 @@ actor {
     ];
   };
 
-  // Existing Functionality...
+  // Main application logic
 
   // User Profile Functions
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
@@ -230,7 +238,6 @@ actor {
     userProfiles.add(caller, profile);
   };
 
-  // Target Functions
   public query ({ caller }) func getTargets() : async UserTargets {
     requireUserPermission(caller);
     switch (userTargetsStore.get(caller)) {
@@ -255,7 +262,6 @@ actor {
     userTargetsStore.add(caller, newTargets);
   };
 
-  // Subject Functions
   public query ({ caller }) func getSubjects() : async [Subject] {
     requireUserPermission(caller);
     getOrCreateUserData(caller).subjects;
@@ -322,7 +328,6 @@ actor {
     userDataStore.add(caller, { userData with subjects = toggledSubjects });
   };
 
-  // Mock Score Functions
   public query ({ caller }) func getMockScores() : async [Nat] {
     requireUserPermission(caller);
     getOrCreateUserData(caller).mockScores;
@@ -335,7 +340,6 @@ actor {
     userDataStore.add(caller, { userData with mockScores = updatedScores });
   };
 
-  // Study Session Functions
   public shared ({ caller }) func addStudySession(subjectName : Text, hours : Float, date : Text) : async () {
     requireUserPermission(caller);
     let userData = getOrCreateUserData(caller);
@@ -376,7 +380,6 @@ actor {
     userDataStore.add(caller, { userData with studySessions = updatedSessions });
   };
 
-  // Question Progress Functions
   public shared ({ caller }) func addQuestions(subjectName : Text, count : Nat) : async () {
     requireUserPermission(caller);
     let userData = getOrCreateUserData(caller);
@@ -432,7 +435,6 @@ actor {
     userDataStore.add(caller, { userData with questionProgress = updatedProgress });
   };
 
-  // Monthly Log Functions
   public shared ({ caller }) func saveMonthlyLog(date : Text, count : Nat) : async () {
     requireUserPermission(caller);
     let userData = getOrCreateUserData(caller);
@@ -458,10 +460,15 @@ actor {
     getOrCreateUserData(caller).monthlyLogs;
   };
 
-  // ----- NEW Functionality -----
-
-  // QUESTION BANK FUNCTIONS
-  public shared ({ caller }) func addQuestion(subject : Text, questionText : Text, questionType : Text, options : [Text], correctAnswer : Text, difficulty : Text, createdAt : Text) : async () {
+  public shared ({ caller }) func addQuestion(
+    subject : Text,
+    questionText : Text,
+    questionType : Text,
+    options : [Text],
+    correctAnswer : Text,
+    difficulty : Text,
+    createdAt : Text,
+  ) : async () {
     requireUserPermission(caller);
     let entries = getOrCreateUserEntries(caller);
 
@@ -510,8 +517,14 @@ actor {
     userEntriesStore.add(caller, { entries with questions = updatedQuestions });
   };
 
-  // EXAM SESSION FUNCTIONS
-  public shared ({ caller }) func saveExamSession(subject : Text, totalQuestions : Nat, correctAnswers : Nat, timeTakenSeconds : Nat, difficulty : Text, completedAt : Text) : async () {
+  public shared ({ caller }) func saveExamSession(
+    subject : Text,
+    totalQuestions : Nat,
+    correctAnswers : Nat,
+    timeTakenSeconds : Nat,
+    difficulty : Text,
+    completedAt : Text,
+  ) : async () {
     requireUserPermission(caller);
     let entries = getOrCreateUserEntries(caller);
 
@@ -540,8 +553,12 @@ actor {
     getOrCreateUserEntries(caller).examSessions;
   };
 
-  // NOTEBOOK ENTRY FUNCTIONS
-  public shared ({ caller }) func addNotebookEntry(subject : Text, title : Text, content : Text, createdAt : Text) : async () {
+  public shared ({ caller }) func addNotebookEntry(
+    subject : Text,
+    title : Text,
+    content : Text,
+    createdAt : Text,
+  ) : async () {
     requireUserPermission(caller);
     let entries = getOrCreateUserEntries(caller);
 
@@ -597,7 +614,6 @@ actor {
     getOrCreateUserEntries(caller).notebookEntries;
   };
 
-  // NOTEPAD ENTRY FUNCTIONS
   public shared ({ caller }) func addNotepadEntry(subject : Text, content : Text, createdAt : Text) : async () {
     requireUserPermission(caller);
     let entries = getOrCreateUserEntries(caller);
@@ -651,5 +667,71 @@ actor {
   public query ({ caller }) func getNotepadEntries() : async [NotepadEntry] {
     requireUserPermission(caller);
     getOrCreateUserEntries(caller).notepadEntries;
+  };
+
+  // File Metadata Functions
+
+  public shared ({ caller }) func saveFileMetadata(
+    fileName : Text,
+    mimeType : Text,
+    sizeBytes : Nat,
+    blobUrl : Text,
+    uploadedAt : Text,
+  ) : async Nat {
+    requireUserPermission(caller);
+
+    let currentStore = switch (fileMetadataStore.get(caller)) {
+      case (null) { { nextFileId = 1; files = [] } };
+      case (?store) { store };
+    };
+
+    let newFile : FileMetadata = {
+      id = currentStore.nextFileId;
+      fileName;
+      mimeType;
+      sizeBytes;
+      blobUrl;
+      uploadedAt;
+    };
+
+    let updatedFiles = currentStore.files.concat([newFile]);
+    let updatedStore = {
+      nextFileId = currentStore.nextFileId + 1;
+      files = updatedFiles;
+    };
+
+    fileMetadataStore.add(caller, updatedStore);
+
+    newFile.id;
+  };
+
+  public query ({ caller }) func getAllFileMetadata() : async [FileMetadata] {
+    requireUserPermission(caller);
+    switch (fileMetadataStore.get(caller)) {
+      case (null) { [] };
+      case (?store) { store.files };
+    };
+  };
+
+  public shared ({ caller }) func deleteFileMetadata(fileId : Nat) : async () {
+    requireUserPermission(caller);
+
+    let currentStore = switch (fileMetadataStore.get(caller)) {
+      case (null) { Runtime.trap("No files found for user") };
+      case (?store) { store };
+    };
+
+    let filteredFiles = currentStore.files.filter(func(f) { f.id != fileId });
+
+    if (filteredFiles.size() == currentStore.files.size()) {
+      Runtime.trap("File not found");
+    };
+
+    let updatedStore = {
+      nextFileId = currentStore.nextFileId;
+      files = filteredFiles;
+    };
+
+    fileMetadataStore.add(caller, updatedStore);
   };
 };

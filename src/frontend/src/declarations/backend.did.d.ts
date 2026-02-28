@@ -19,6 +19,14 @@ export interface ExamSession {
   'totalQuestions' : bigint,
   'correctAnswers' : bigint,
 }
+export interface FileMetadata {
+  'id' : bigint,
+  'blobUrl' : string,
+  'mimeType' : string,
+  'fileName' : string,
+  'sizeBytes' : bigint,
+  'uploadedAt' : string,
+}
 export interface MonthlyLogEntry { 'date' : string, 'count' : bigint }
 export interface NotebookEntry {
   'id' : bigint,
@@ -72,7 +80,33 @@ export interface UserTargets {
   'planTotalDays' : bigint,
   'totalQuestionsGoal' : bigint,
 }
+export interface _CaffeineStorageCreateCertificateResult {
+  'method' : string,
+  'blob_hash' : string,
+}
+export interface _CaffeineStorageRefillInformation {
+  'proposed_top_up_amount' : [] | [bigint],
+}
+export interface _CaffeineStorageRefillResult {
+  'success' : [] | [boolean],
+  'topped_up_amount' : [] | [bigint],
+}
 export interface _SERVICE {
+  '_caffeineStorageBlobIsLive' : ActorMethod<[Uint8Array], boolean>,
+  '_caffeineStorageBlobsToDelete' : ActorMethod<[], Array<Uint8Array>>,
+  '_caffeineStorageConfirmBlobDeletion' : ActorMethod<
+    [Array<Uint8Array>],
+    undefined
+  >,
+  '_caffeineStorageCreateCertificate' : ActorMethod<
+    [string],
+    _CaffeineStorageCreateCertificateResult
+  >,
+  '_caffeineStorageRefillCashier' : ActorMethod<
+    [[] | [_CaffeineStorageRefillInformation]],
+    _CaffeineStorageRefillResult
+  >,
+  '_caffeineStorageUpdateGatewayPrincipals' : ActorMethod<[], undefined>,
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'addMockScore' : ActorMethod<[bigint], undefined>,
   'addNotebookEntry' : ActorMethod<[string, string, string, string], undefined>,
@@ -85,10 +119,12 @@ export interface _SERVICE {
   'addStudySession' : ActorMethod<[string, number, string], undefined>,
   'addSubject' : ActorMethod<[string, string], undefined>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
+  'deleteFileMetadata' : ActorMethod<[bigint], undefined>,
   'deleteNotebookEntry' : ActorMethod<[bigint], undefined>,
   'deleteNotepadEntry' : ActorMethod<[bigint], undefined>,
   'deleteQuestion' : ActorMethod<[bigint], undefined>,
   'deleteSubject' : ActorMethod<[bigint], undefined>,
+  'getAllFileMetadata' : ActorMethod<[], Array<FileMetadata>>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
   'getExamSessions' : ActorMethod<[], Array<ExamSession>>,
@@ -108,6 +144,10 @@ export interface _SERVICE {
   'saveExamSession' : ActorMethod<
     [string, bigint, bigint, bigint, string, string],
     undefined
+  >,
+  'saveFileMetadata' : ActorMethod<
+    [string, string, bigint, string, string],
+    bigint
   >,
   'saveMonthlyLog' : ActorMethod<[string, bigint], undefined>,
   'setQuestionCount' : ActorMethod<[string, bigint], undefined>,
