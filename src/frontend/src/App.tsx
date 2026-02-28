@@ -3,9 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import AddSubjectTab from "./components/AddSubjectTab";
 import AnalyticsTab from "./components/AnalyticsTab";
+import ExamTab from "./components/ExamTab";
 import FloatingTimerWidget from "./components/FloatingTimerWidget";
 import HomeTab from "./components/HomeTab";
 import LoginGate from "./components/LoginGate";
+import NotebookTab from "./components/NotebookTab";
+import NotepadTab from "./components/NotepadTab";
 import QuestionsTab from "./components/QuestionsTab";
 import Sidebar from "./components/Sidebar";
 import StudyPlanTab from "./components/StudyPlanTab";
@@ -19,7 +22,10 @@ export type TabId =
   | "analytics"
   | "timer"
   | "studyplan"
-  | "questions";
+  | "questions"
+  | "exam"
+  | "notebook"
+  | "notepad";
 
 export type TimerMode = "work" | "short" | "long";
 
@@ -244,6 +250,9 @@ export default function App() {
         )}
         {activeTab === "studyplan" && <StudyPlanTab />}
         {activeTab === "questions" && <QuestionsTab />}
+        {activeTab === "exam" && <ExamTab />}
+        {activeTab === "notebook" && <NotebookTab />}
+        {activeTab === "notepad" && <NotepadTab />}
       </main>
 
       {/* Floating Timer Widget */}

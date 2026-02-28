@@ -63,6 +63,10 @@ const SUBJECT_DISPLAY: Record<
     color: "text-cyan-400 bg-cyan-500/10 border-cyan-500/30",
     icon: <CheckCircle2 size={14} />,
   },
+  Science: {
+    color: "text-green-400 bg-green-500/10 border-green-500/30",
+    icon: <Zap size={14} />,
+  },
 };
 
 const MILESTONE_LABELS = [

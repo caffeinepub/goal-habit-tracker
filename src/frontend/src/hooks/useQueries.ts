@@ -13,6 +13,7 @@ const DEFAULT_TARGETS: UserTargets = {
     { name: "General Knowledge", target: BigInt(1500) },
     { name: "Current Affairs", target: BigInt(1000) },
     { name: "Computer", target: BigInt(500) },
+    { name: "Science", target: BigInt(0) },
   ],
 };
 
@@ -296,6 +297,279 @@ export function useSetStudySession() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["studySessions"] });
+    },
+  });
+}
+
+// ---- Question Bank ----
+
+export function useGetQuestions() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["questions"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getQuestions();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useGetQuestionsBySubject(subject: string) {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["questions", subject],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getQuestionsBySubject(subject);
+    },
+    enabled: !!actor && !isFetching && subject !== "",
+  });
+}
+
+export function useAddQuestion() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      subject,
+      questionText,
+      questionType,
+      options,
+      correctAnswer,
+      difficulty,
+    }: {
+      subject: string;
+      questionText: string;
+      questionType: string;
+      options: string[];
+      correctAnswer: string;
+      difficulty: string;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      return actor.addQuestion(
+        subject,
+        questionText,
+        questionType,
+        options,
+        correctAnswer,
+        difficulty,
+        new Date().toISOString(),
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["questions"] });
+    },
+  });
+}
+
+export function useDeleteQuestion() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("No actor");
+      return actor.deleteQuestion(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["questions"] });
+    },
+  });
+}
+
+// ---- Exam Sessions ----
+
+export function useGetExamSessions() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["examSessions"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getExamSessions();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useSaveExamSession() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      subject,
+      totalQuestions,
+      correctAnswers,
+      timeTakenSeconds,
+      difficulty,
+    }: {
+      subject: string;
+      totalQuestions: number;
+      correctAnswers: number;
+      timeTakenSeconds: number;
+      difficulty: string;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      return actor.saveExamSession(
+        subject,
+        BigInt(totalQuestions),
+        BigInt(correctAnswers),
+        BigInt(timeTakenSeconds),
+        difficulty,
+        new Date().toISOString(),
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["examSessions"] });
+    },
+  });
+}
+
+// ---- Notebook ----
+
+export function useGetNotebookEntries() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["notebookEntries"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getNotebookEntries();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useAddNotebookEntry() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      subject,
+      title,
+      content,
+    }: {
+      subject: string;
+      title: string;
+      content: string;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      return actor.addNotebookEntry(
+        subject,
+        title,
+        content,
+        new Date().toISOString(),
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notebookEntries"] });
+    },
+  });
+}
+
+export function useUpdateNotebookEntry() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      title,
+      content,
+    }: {
+      id: bigint;
+      title: string;
+      content: string;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      return actor.updateNotebookEntry(
+        id,
+        title,
+        content,
+        new Date().toISOString(),
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notebookEntries"] });
+    },
+  });
+}
+
+export function useDeleteNotebookEntry() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("No actor");
+      return actor.deleteNotebookEntry(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notebookEntries"] });
+    },
+  });
+}
+
+// ---- Notepad ----
+
+export function useGetNotepadEntries() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["notepadEntries"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getNotepadEntries();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useAddNotepadEntry() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      subject,
+      content,
+    }: {
+      subject: string;
+      content: string;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      return actor.addNotepadEntry(subject, content, new Date().toISOString());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notepadEntries"] });
+    },
+  });
+}
+
+export function useUpdateNotepadEntry() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      content,
+    }: {
+      id: bigint;
+      content: string;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      return actor.updateNotepadEntry(id, content, new Date().toISOString());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notepadEntries"] });
+    },
+  });
+}
+
+export function useDeleteNotepadEntry() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("No actor");
+      return actor.deleteNotepadEntry(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notepadEntries"] });
     },
   });
 }

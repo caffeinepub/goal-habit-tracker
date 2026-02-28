@@ -10,7 +10,41 @@ import type { ActorMethod } from '@icp-sdk/core/agent';
 import type { IDL } from '@icp-sdk/core/candid';
 import type { Principal } from '@icp-sdk/core/principal';
 
+export interface ExamSession {
+  'id' : bigint,
+  'completedAt' : string,
+  'subject' : string,
+  'difficulty' : string,
+  'timeTakenSeconds' : bigint,
+  'totalQuestions' : bigint,
+  'correctAnswers' : bigint,
+}
 export interface MonthlyLogEntry { 'date' : string, 'count' : bigint }
+export interface NotebookEntry {
+  'id' : bigint,
+  'title' : string,
+  'content' : string,
+  'subject' : string,
+  'createdAt' : string,
+  'updatedAt' : string,
+}
+export interface NotepadEntry {
+  'id' : bigint,
+  'content' : string,
+  'subject' : string,
+  'createdAt' : string,
+  'updatedAt' : string,
+}
+export interface Question {
+  'id' : bigint,
+  'subject' : string,
+  'difficulty' : string,
+  'createdAt' : string,
+  'correctAnswer' : string,
+  'questionText' : string,
+  'questionType' : string,
+  'options' : Array<string>,
+}
 export interface StudySession {
   'hours' : number,
   'subjectName' : string,
@@ -41,22 +75,40 @@ export interface UserTargets {
 export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'addMockScore' : ActorMethod<[bigint], undefined>,
+  'addNotebookEntry' : ActorMethod<[string, string, string, string], undefined>,
+  'addNotepadEntry' : ActorMethod<[string, string, string], undefined>,
+  'addQuestion' : ActorMethod<
+    [string, string, string, Array<string>, string, string, string],
+    undefined
+  >,
   'addQuestions' : ActorMethod<[string, bigint], undefined>,
   'addStudySession' : ActorMethod<[string, number, string], undefined>,
   'addSubject' : ActorMethod<[string, string], undefined>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
+  'deleteNotebookEntry' : ActorMethod<[bigint], undefined>,
+  'deleteNotepadEntry' : ActorMethod<[bigint], undefined>,
+  'deleteQuestion' : ActorMethod<[bigint], undefined>,
   'deleteSubject' : ActorMethod<[bigint], undefined>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
+  'getExamSessions' : ActorMethod<[], Array<ExamSession>>,
   'getMockScores' : ActorMethod<[], Array<bigint>>,
   'getMonthlyLogs' : ActorMethod<[], Array<MonthlyLogEntry>>,
+  'getNotebookEntries' : ActorMethod<[], Array<NotebookEntry>>,
+  'getNotepadEntries' : ActorMethod<[], Array<NotepadEntry>>,
   'getQuestionProgress' : ActorMethod<[], Array<SubjectQuestionProgress>>,
+  'getQuestions' : ActorMethod<[], Array<Question>>,
+  'getQuestionsBySubject' : ActorMethod<[string], Array<Question>>,
   'getStudySessions' : ActorMethod<[], Array<StudySession>>,
   'getSubjects' : ActorMethod<[], Array<Subject>>,
   'getTargets' : ActorMethod<[], UserTargets>,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
+  'saveExamSession' : ActorMethod<
+    [string, bigint, bigint, bigint, string, string],
+    undefined
+  >,
   'saveMonthlyLog' : ActorMethod<[string, bigint], undefined>,
   'setQuestionCount' : ActorMethod<[string, bigint], undefined>,
   'setStudySession' : ActorMethod<[string, number, string], undefined>,
@@ -65,6 +117,11 @@ export interface _SERVICE {
     undefined
   >,
   'toggleDay' : ActorMethod<[bigint, bigint], undefined>,
+  'updateNotebookEntry' : ActorMethod<
+    [bigint, string, string, string],
+    undefined
+  >,
+  'updateNotepadEntry' : ActorMethod<[bigint, string, string], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

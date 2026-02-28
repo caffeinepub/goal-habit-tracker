@@ -37,6 +37,7 @@ const SSC_SUBJECTS = [
   "General Knowledge",
   "Current Affairs",
   "Computer",
+  "Science",
 ];
 
 const SUBJECT_COLORS: Record<string, string> = {
@@ -46,6 +47,7 @@ const SUBJECT_COLORS: Record<string, string> = {
   "General Knowledge": "bg-amber-500/20 text-amber-400 border-amber-500/30",
   "Current Affairs": "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
   Computer: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+  Science: "bg-green-500/20 text-green-400 border-green-500/30",
 };
 
 function getTodayDate() {

@@ -33,6 +33,7 @@ const SUBJECT_COLORS: Record<string, string> = {
   "General Knowledge": "text-amber-400",
   "Current Affairs": "text-emerald-400",
   Computer: "text-cyan-400",
+  Science: "text-green-400",
 };
 
 const SUBJECT_BG: Record<string, string> = {
@@ -42,6 +43,7 @@ const SUBJECT_BG: Record<string, string> = {
   "General Knowledge": "bg-amber-400/10",
   "Current Affairs": "bg-emerald-400/10",
   Computer: "bg-cyan-400/10",
+  Science: "bg-green-400/10",
 };
 
 interface TargetsPanelProps {

@@ -14,13 +14,47 @@ export const UserRole = IDL.Variant({
   'guest' : IDL.Null,
 });
 export const UserProfile = IDL.Record({ 'name' : IDL.Text });
+export const ExamSession = IDL.Record({
+  'id' : IDL.Nat,
+  'completedAt' : IDL.Text,
+  'subject' : IDL.Text,
+  'difficulty' : IDL.Text,
+  'timeTakenSeconds' : IDL.Nat,
+  'totalQuestions' : IDL.Nat,
+  'correctAnswers' : IDL.Nat,
+});
 export const MonthlyLogEntry = IDL.Record({
   'date' : IDL.Text,
   'count' : IDL.Nat,
 });
+export const NotebookEntry = IDL.Record({
+  'id' : IDL.Nat,
+  'title' : IDL.Text,
+  'content' : IDL.Text,
+  'subject' : IDL.Text,
+  'createdAt' : IDL.Text,
+  'updatedAt' : IDL.Text,
+});
+export const NotepadEntry = IDL.Record({
+  'id' : IDL.Nat,
+  'content' : IDL.Text,
+  'subject' : IDL.Text,
+  'createdAt' : IDL.Text,
+  'updatedAt' : IDL.Text,
+});
 export const SubjectQuestionProgress = IDL.Record({
   'subjectName' : IDL.Text,
   'count' : IDL.Nat,
+});
+export const Question = IDL.Record({
+  'id' : IDL.Nat,
+  'subject' : IDL.Text,
+  'difficulty' : IDL.Text,
+  'createdAt' : IDL.Text,
+  'correctAnswer' : IDL.Text,
+  'questionText' : IDL.Text,
+  'questionType' : IDL.Text,
+  'options' : IDL.Vec(IDL.Text),
 });
 export const StudySession = IDL.Record({
   'hours' : IDL.Float64,
@@ -48,18 +82,49 @@ export const UserTargets = IDL.Record({
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
   'addMockScore' : IDL.Func([IDL.Nat], [], []),
+  'addNotebookEntry' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+      [],
+      [],
+    ),
+  'addNotepadEntry' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [], []),
+  'addQuestion' : IDL.Func(
+      [
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Vec(IDL.Text),
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+      ],
+      [],
+      [],
+    ),
   'addQuestions' : IDL.Func([IDL.Text, IDL.Nat], [], []),
   'addStudySession' : IDL.Func([IDL.Text, IDL.Float64, IDL.Text], [], []),
   'addSubject' : IDL.Func([IDL.Text, IDL.Text], [], []),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+  'deleteNotebookEntry' : IDL.Func([IDL.Nat], [], []),
+  'deleteNotepadEntry' : IDL.Func([IDL.Nat], [], []),
+  'deleteQuestion' : IDL.Func([IDL.Nat], [], []),
   'deleteSubject' : IDL.Func([IDL.Nat], [], []),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+  'getExamSessions' : IDL.Func([], [IDL.Vec(ExamSession)], ['query']),
   'getMockScores' : IDL.Func([], [IDL.Vec(IDL.Nat)], ['query']),
   'getMonthlyLogs' : IDL.Func([], [IDL.Vec(MonthlyLogEntry)], ['query']),
+  'getNotebookEntries' : IDL.Func([], [IDL.Vec(NotebookEntry)], ['query']),
+  'getNotepadEntries' : IDL.Func([], [IDL.Vec(NotepadEntry)], ['query']),
   'getQuestionProgress' : IDL.Func(
       [],
       [IDL.Vec(SubjectQuestionProgress)],
+      ['query'],
+    ),
+  'getQuestions' : IDL.Func([], [IDL.Vec(Question)], ['query']),
+  'getQuestionsBySubject' : IDL.Func(
+      [IDL.Text],
+      [IDL.Vec(Question)],
       ['query'],
     ),
   'getStudySessions' : IDL.Func([], [IDL.Vec(StudySession)], ['query']),
@@ -72,6 +137,11 @@ export const idlService = IDL.Service({
     ),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
   'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+  'saveExamSession' : IDL.Func(
+      [IDL.Text, IDL.Nat, IDL.Nat, IDL.Nat, IDL.Text, IDL.Text],
+      [],
+      [],
+    ),
   'saveMonthlyLog' : IDL.Func([IDL.Text, IDL.Nat], [], []),
   'setQuestionCount' : IDL.Func([IDL.Text, IDL.Nat], [], []),
   'setStudySession' : IDL.Func([IDL.Text, IDL.Float64, IDL.Text], [], []),
@@ -81,6 +151,12 @@ export const idlService = IDL.Service({
       [],
     ),
   'toggleDay' : IDL.Func([IDL.Nat, IDL.Nat], [], []),
+  'updateNotebookEntry' : IDL.Func(
+      [IDL.Nat, IDL.Text, IDL.Text, IDL.Text],
+      [],
+      [],
+    ),
+  'updateNotepadEntry' : IDL.Func([IDL.Nat, IDL.Text, IDL.Text], [], []),
 });
 
 export const idlInitArgs = [];
@@ -92,10 +168,44 @@ export const idlFactory = ({ IDL }) => {
     'guest' : IDL.Null,
   });
   const UserProfile = IDL.Record({ 'name' : IDL.Text });
+  const ExamSession = IDL.Record({
+    'id' : IDL.Nat,
+    'completedAt' : IDL.Text,
+    'subject' : IDL.Text,
+    'difficulty' : IDL.Text,
+    'timeTakenSeconds' : IDL.Nat,
+    'totalQuestions' : IDL.Nat,
+    'correctAnswers' : IDL.Nat,
+  });
   const MonthlyLogEntry = IDL.Record({ 'date' : IDL.Text, 'count' : IDL.Nat });
+  const NotebookEntry = IDL.Record({
+    'id' : IDL.Nat,
+    'title' : IDL.Text,
+    'content' : IDL.Text,
+    'subject' : IDL.Text,
+    'createdAt' : IDL.Text,
+    'updatedAt' : IDL.Text,
+  });
+  const NotepadEntry = IDL.Record({
+    'id' : IDL.Nat,
+    'content' : IDL.Text,
+    'subject' : IDL.Text,
+    'createdAt' : IDL.Text,
+    'updatedAt' : IDL.Text,
+  });
   const SubjectQuestionProgress = IDL.Record({
     'subjectName' : IDL.Text,
     'count' : IDL.Nat,
+  });
+  const Question = IDL.Record({
+    'id' : IDL.Nat,
+    'subject' : IDL.Text,
+    'difficulty' : IDL.Text,
+    'createdAt' : IDL.Text,
+    'correctAnswer' : IDL.Text,
+    'questionText' : IDL.Text,
+    'questionType' : IDL.Text,
+    'options' : IDL.Vec(IDL.Text),
   });
   const StudySession = IDL.Record({
     'hours' : IDL.Float64,
@@ -120,18 +230,49 @@ export const idlFactory = ({ IDL }) => {
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
     'addMockScore' : IDL.Func([IDL.Nat], [], []),
+    'addNotebookEntry' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+        [],
+        [],
+      ),
+    'addNotepadEntry' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [], []),
+    'addQuestion' : IDL.Func(
+        [
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Vec(IDL.Text),
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+        ],
+        [],
+        [],
+      ),
     'addQuestions' : IDL.Func([IDL.Text, IDL.Nat], [], []),
     'addStudySession' : IDL.Func([IDL.Text, IDL.Float64, IDL.Text], [], []),
     'addSubject' : IDL.Func([IDL.Text, IDL.Text], [], []),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+    'deleteNotebookEntry' : IDL.Func([IDL.Nat], [], []),
+    'deleteNotepadEntry' : IDL.Func([IDL.Nat], [], []),
+    'deleteQuestion' : IDL.Func([IDL.Nat], [], []),
     'deleteSubject' : IDL.Func([IDL.Nat], [], []),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+    'getExamSessions' : IDL.Func([], [IDL.Vec(ExamSession)], ['query']),
     'getMockScores' : IDL.Func([], [IDL.Vec(IDL.Nat)], ['query']),
     'getMonthlyLogs' : IDL.Func([], [IDL.Vec(MonthlyLogEntry)], ['query']),
+    'getNotebookEntries' : IDL.Func([], [IDL.Vec(NotebookEntry)], ['query']),
+    'getNotepadEntries' : IDL.Func([], [IDL.Vec(NotepadEntry)], ['query']),
     'getQuestionProgress' : IDL.Func(
         [],
         [IDL.Vec(SubjectQuestionProgress)],
+        ['query'],
+      ),
+    'getQuestions' : IDL.Func([], [IDL.Vec(Question)], ['query']),
+    'getQuestionsBySubject' : IDL.Func(
+        [IDL.Text],
+        [IDL.Vec(Question)],
         ['query'],
       ),
     'getStudySessions' : IDL.Func([], [IDL.Vec(StudySession)], ['query']),
@@ -144,6 +285,11 @@ export const idlFactory = ({ IDL }) => {
       ),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
     'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+    'saveExamSession' : IDL.Func(
+        [IDL.Text, IDL.Nat, IDL.Nat, IDL.Nat, IDL.Text, IDL.Text],
+        [],
+        [],
+      ),
     'saveMonthlyLog' : IDL.Func([IDL.Text, IDL.Nat], [], []),
     'setQuestionCount' : IDL.Func([IDL.Text, IDL.Nat], [], []),
     'setStudySession' : IDL.Func([IDL.Text, IDL.Float64, IDL.Text], [], []),
@@ -153,6 +299,12 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'toggleDay' : IDL.Func([IDL.Nat, IDL.Nat], [], []),
+    'updateNotebookEntry' : IDL.Func(
+        [IDL.Nat, IDL.Text, IDL.Text, IDL.Text],
+        [],
+        [],
+      ),
+    'updateNotepadEntry' : IDL.Func([IDL.Nat, IDL.Text, IDL.Text], [], []),
   });
 };
 

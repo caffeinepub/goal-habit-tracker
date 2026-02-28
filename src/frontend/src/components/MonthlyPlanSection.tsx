@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   Clock,
   Flame,
+  Pencil,
   Target,
   TrendingUp,
 } from "lucide-react";
@@ -291,7 +292,9 @@ export default function MonthlyPlanSection() {
             ultimate goal
           </p>
         </div>
-        <TargetsPanel />
+        <div className="ml-auto shrink-0">
+          <TargetsPanel />
+        </div>
       </div>
 
       {/* Summary Stats Row */}
@@ -591,20 +594,41 @@ export default function MonthlyPlanSection() {
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: i * 0.015, duration: 0.2 }}
                     className={`relative flex flex-col items-center justify-center gap-0.5 p-1.5 rounded-lg border text-center min-h-[56px] ${DAY_STATUS_STYLES[cell.status]}`}
+                    title={
+                      cell.status === "today" ? "Editable today" : undefined
+                    }
                   >
-                    <span className="text-[9px] font-medium opacity-70">
+                    <span className="text-[9px] font-medium opacity-70 flex items-center gap-0.5">
                       D{cell.dayNum}
+                      {cell.status === "today" && (
+                        <Pencil size={7} className="opacity-70" />
+                      )}
                     </span>
-                    <span className="font-mono text-[11px] font-bold leading-none">
-                      {cell.status === "future" ? "—" : cell.count}
-                    </span>
+
+                    {/* Today cell: inline editable input */}
+                    {cell.status === "today" ? (
+                      <input
+                        type="number"
+                        min={0}
+                        value={inputValue}
+                        onChange={handleInputChange}
+                        onClick={(e) => e.currentTarget.select()}
+                        className="w-full text-center font-mono text-[11px] font-bold bg-transparent border-0 border-b border-current/40 outline-none p-0 leading-none text-current [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        aria-label="Today's questions solved"
+                      />
+                    ) : (
+                      <span className="font-mono text-[11px] font-bold leading-none">
+                        {cell.status === "future" ? "—" : cell.count}
+                      </span>
+                    )}
+
                     {/* Mini bar */}
                     {cell.status !== "future" && (
                       <div className="w-full mt-1 h-0.5 rounded-full bg-current/20 overflow-hidden">
                         <div
                           className="h-full rounded-full bg-current"
                           style={{
-                            width: `${Math.min((cell.count / DAILY_TARGET) * 100, 100)}%`,
+                            width: `${Math.min(((cell.status === "today" ? Number(inputValue) || 0 : cell.count) / DAILY_TARGET) * 100, 100)}%`,
                           }}
                         />
                       </div>

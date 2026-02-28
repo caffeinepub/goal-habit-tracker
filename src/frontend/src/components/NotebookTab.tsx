@@ -1,0 +1,566 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Bold,
+  BookOpen,
+  FileText,
+  List,
+  Loader2,
+  Plus,
+  Search,
+  Trash2,
+  Type,
+} from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import type { NotebookEntry } from "../backend.d";
+import {
+  useAddNotebookEntry,
+  useDeleteNotebookEntry,
+  useGetNotebookEntries,
+  useUpdateNotebookEntry,
+} from "../hooks/useQueries";
+
+const SUBJECTS = [
+  "Maths",
+  "English",
+  "Reasoning",
+  "General Knowledge",
+  "Current Affairs",
+  "Computer",
+  "Science",
+  "Other",
+];
+
+const SUBJECT_COLORS: Record<string, string> = {
+  Maths: "text-primary border-primary/40 bg-primary/10",
+  English: "text-blue-400 border-blue-500/40 bg-blue-500/10",
+  Reasoning: "text-purple-400 border-purple-500/40 bg-purple-500/10",
+  "General Knowledge": "text-amber-400 border-amber-500/40 bg-amber-500/10",
+  "Current Affairs": "text-emerald-400 border-emerald-500/40 bg-emerald-500/10",
+  Computer: "text-cyan-400 border-cyan-500/40 bg-cyan-500/10",
+  Science: "text-green-400 border-green-500/40 bg-green-500/10",
+  Other: "text-muted-foreground border-border bg-muted/20",
+};
+
+type SaveStatus = "idle" | "saving" | "saved";
+
+// ── Toolbar Insert Helpers ───────────────────────────────────────────────────
+function insertMarkdown(
+  textarea: HTMLTextAreaElement,
+  syntax: string,
+  wrap = false,
+) {
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const val = textarea.value;
+  const selected = val.slice(start, end);
+
+  let newVal: string;
+  let newCursor: number;
+
+  if (wrap) {
+    newVal = val.slice(0, start) + syntax + selected + syntax + val.slice(end);
+    newCursor = selected
+      ? start + syntax.length + selected.length + syntax.length
+      : start + syntax.length;
+  } else {
+    const lineStart = val.lastIndexOf("\n", start - 1) + 1;
+    newVal = val.slice(0, lineStart) + syntax + val.slice(lineStart);
+    newCursor = lineStart + syntax.length + (start - lineStart);
+  }
+
+  return { newVal, newCursor };
+}
+
+// ── Note Editor ──────────────────────────────────────────────────────────────
+function NoteEditor({
+  note,
+  onClose,
+}: {
+  note: NotebookEntry;
+  onClose: () => void;
+}) {
+  const updateNote = useUpdateNotebookEntry();
+  const [title, setTitle] = useState(note.title);
+  const [content, setContent] = useState(note.content);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const triggerSave = useCallback(
+    (newTitle: string, newContent: string) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        setSaveStatus("saving");
+        if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+        updateNote.mutate(
+          {
+            id: note.id,
+            title: newTitle.trim() || "Untitled",
+            content: newContent,
+          },
+          {
+            onSuccess: () => {
+              setSaveStatus("saved");
+              savedTimerRef.current = setTimeout(
+                () => setSaveStatus("idle"),
+                3000,
+              );
+            },
+            onError: () => {
+              setSaveStatus("idle");
+              toast.error("Failed to save note");
+            },
+          },
+        );
+      }, 800);
+    },
+    [note.id, updateNote],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
+  }, []);
+
+  const handleTitleChange = (val: string) => {
+    setTitle(val);
+    triggerSave(val, content);
+  };
+
+  const handleContentChange = (val: string) => {
+    setContent(val);
+    triggerSave(title, val);
+  };
+
+  const handleToolbarAction = (action: "bold" | "bullet" | "heading") => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    let result: { newVal: string; newCursor: number };
+    if (action === "bold") {
+      result = insertMarkdown(textarea, "**", true);
+    } else if (action === "bullet") {
+      result = insertMarkdown(textarea, "- ", false);
+    } else {
+      result = insertMarkdown(textarea, "## ", false);
+    }
+
+    setContent(result.newVal);
+    triggerSave(title, result.newVal);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(result.newCursor, result.newCursor);
+    }, 0);
+  };
+
+  const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 12 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 12 }}
+      className="flex flex-col h-full"
+    >
+      {/* Editor Header */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+        <Badge
+          variant="outline"
+          className={`text-[10px] px-1.5 py-0 shrink-0 ${SUBJECT_COLORS[note.subject] || SUBJECT_COLORS.Other}`}
+        >
+          {note.subject}
+        </Badge>
+        <div className="flex items-center gap-1.5 ml-auto">
+          {saveStatus === "saving" && (
+            <span className="flex items-center gap-1 text-muted-foreground text-xs">
+              <Loader2 size={10} className="animate-spin" />
+              Saving…
+            </span>
+          )}
+          {saveStatus === "saved" && (
+            <span className="flex items-center gap-1 text-emerald-400 text-xs">
+              ✓ Saved
+            </span>
+          )}
+          <span className="text-[10px] text-muted-foreground">
+            {wordCount} words
+          </span>
+        </div>
+      </div>
+
+      {/* Formatting Toolbar */}
+      <div className="flex items-center gap-1 px-4 py-2 border-b border-border bg-muted/20">
+        <button
+          type="button"
+          onClick={() => handleToolbarAction("bold")}
+          title="Bold (**text**)"
+          className="p-1.5 rounded hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <Bold size={13} />
+        </button>
+        <button
+          type="button"
+          onClick={() => handleToolbarAction("bullet")}
+          title="Bullet point"
+          className="p-1.5 rounded hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <List size={13} />
+        </button>
+        <button
+          type="button"
+          onClick={() => handleToolbarAction("heading")}
+          title="Heading (## text)"
+          className="p-1.5 rounded hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <Type size={13} />
+        </button>
+        <div className="h-4 w-px bg-border mx-1" />
+        <span className="text-[10px] text-muted-foreground">
+          Updated{" "}
+          {new Date(note.updatedAt).toLocaleDateString("en-IN", {
+            day: "numeric",
+            month: "short",
+          })}
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          className="ml-auto h-7 text-xs text-muted-foreground hover:text-foreground"
+        >
+          Close
+        </Button>
+      </div>
+
+      {/* Title */}
+      <input
+        type="text"
+        value={title}
+        onChange={(e) => handleTitleChange(e.target.value)}
+        placeholder="Note title..."
+        className="px-4 py-3 text-lg font-display font-semibold bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground/40 border-b border-border"
+      />
+
+      {/* Content */}
+      <Textarea
+        ref={textareaRef}
+        value={content}
+        onChange={(e) => handleContentChange(e.target.value)}
+        placeholder="Start writing your notes here...
+
+Use **bold** for emphasis
+Use ## for headings
+Use - for bullet points"
+        className="flex-1 resize-none border-none bg-transparent text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/30 focus-visible:ring-0 rounded-none px-4 py-3 min-h-[300px]"
+      />
+    </motion.div>
+  );
+}
+
+// ── Note List Item ────────────────────────────────────────────────────────────
+function NoteListItem({
+  note,
+  isActive,
+  onSelect,
+  onDelete,
+}: {
+  note: NotebookEntry;
+  isActive: boolean;
+  onSelect: () => void;
+  onDelete: () => void;
+}) {
+  const preview = note.content
+    .replace(/^#{1,3}\s/gm, "")
+    .replace(/\*\*/g, "")
+    .replace(/^-\s/gm, "• ")
+    .trim()
+    .slice(0, 80);
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.96 }}
+      className={`group relative cursor-pointer rounded-lg px-3 py-2.5 transition-colors border ${
+        isActive
+          ? "bg-primary/10 border-primary/30"
+          : "bg-transparent border-transparent hover:bg-muted/30 hover:border-border"
+      }`}
+      onClick={onSelect}
+    >
+      <div className="flex items-start gap-2">
+        <FileText
+          size={13}
+          className={`mt-0.5 shrink-0 ${isActive ? "text-primary" : "text-muted-foreground"}`}
+        />
+        <div className="flex-1 min-w-0">
+          <p
+            className={`text-xs font-medium leading-tight truncate ${isActive ? "text-foreground" : "text-foreground/80"}`}
+          >
+            {note.title || "Untitled"}
+          </p>
+          {preview && (
+            <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2 leading-relaxed">
+              {preview}
+            </p>
+          )}
+          <p className="text-[10px] text-muted-foreground/50 mt-1">
+            {new Date(note.updatedAt).toLocaleDateString("en-IN", {
+              day: "numeric",
+              month: "short",
+            })}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-all shrink-0"
+        >
+          <Trash2 size={11} />
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+// ── Main NotebookTab ─────────────────────────────────────────────────────────
+export default function NotebookTab() {
+  const { data: entries = [], isLoading } = useGetNotebookEntries();
+  const addNote = useAddNotebookEntry();
+  const deleteNote = useDeleteNotebookEntry();
+
+  const [selectedSubject, setSelectedSubject] = useState(SUBJECTS[0]);
+  const [activeNoteId, setActiveNoteId] = useState<bigint | null>(null);
+  const [search, setSearch] = useState("");
+
+  const allEntries = entries as NotebookEntry[];
+
+  // Filter entries
+  const filtered = useMemo(() => {
+    if (search.trim()) {
+      const s = search.toLowerCase();
+      return allEntries.filter(
+        (e) =>
+          e.title.toLowerCase().includes(s) ||
+          e.content.toLowerCase().includes(s),
+      );
+    }
+    return allEntries.filter((e) => e.subject === selectedSubject);
+  }, [allEntries, selectedSubject, search]);
+
+  // Sort by most recently updated
+  const sorted = useMemo(
+    () =>
+      [...filtered].sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      ),
+    [filtered],
+  );
+
+  const activeNote = useMemo(
+    () => allEntries.find((e) => e.id === activeNoteId) ?? null,
+    [allEntries, activeNoteId],
+  );
+
+  const subjectCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const e of allEntries) {
+      map[e.subject] = (map[e.subject] || 0) + 1;
+    }
+    return map;
+  }, [allEntries]);
+
+  const handleNewNote = async () => {
+    try {
+      await addNote.mutateAsync({
+        subject: selectedSubject,
+        title: "Untitled Note",
+        content: "",
+      });
+      toast.success("Note created");
+      // The new note will appear at the top after invalidation
+    } catch {
+      toast.error("Failed to create note");
+    }
+  };
+
+  const handleDelete = async (id: bigint) => {
+    try {
+      await deleteNote.mutateAsync(id);
+      if (activeNoteId === id) setActiveNoteId(null);
+      toast.success("Note deleted");
+    } catch {
+      toast.error("Failed to delete note");
+    }
+  };
+
+  return (
+    <div className="flex h-screen overflow-hidden">
+      {/* Subject Sidebar */}
+      <div className="w-44 shrink-0 border-r border-border flex flex-col bg-sidebar/50">
+        <div className="p-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <BookOpen size={14} className="text-primary" />
+            <span className="font-display text-sm font-semibold text-foreground">
+              Notebook
+            </span>
+          </div>
+        </div>
+
+        <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
+          {SUBJECTS.map((subj) => {
+            const count = subjectCounts[subj] || 0;
+            const isActive = selectedSubject === subj && !search;
+            return (
+              <button
+                key={subj}
+                type="button"
+                onClick={() => {
+                  setSelectedSubject(subj);
+                  setSearch("");
+                }}
+                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-md text-xs transition-colors ${
+                  isActive
+                    ? "bg-primary/15 text-foreground border-l-2 border-primary"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/30 border-l-2 border-transparent"
+                }`}
+              >
+                <span className="truncate">{subj}</span>
+                {count > 0 && (
+                  <span
+                    className={`text-[9px] font-mono rounded-full w-4 h-4 flex items-center justify-center shrink-0 ${
+                      isActive
+                        ? "bg-primary/30 text-primary"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* Notes List */}
+      <div className="w-60 shrink-0 border-r border-border flex flex-col">
+        {/* Search + New */}
+        <div className="p-3 border-b border-border space-y-2">
+          <div className="relative">
+            <Search
+              size={11}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              placeholder="Search all notes..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-7 h-7 text-xs bg-muted/40 border-input"
+            />
+          </div>
+          <Button
+            size="sm"
+            onClick={handleNewNote}
+            disabled={addNote.isPending}
+            className="w-full h-7 text-xs gap-1"
+          >
+            {addNote.isPending ? (
+              <Loader2 size={10} className="animate-spin" />
+            ) : (
+              <Plus size={10} />
+            )}
+            New Note
+          </Button>
+        </div>
+
+        {/* Note list */}
+        <div className="flex-1 overflow-y-auto p-2">
+          {isLoading ? (
+            <div className="space-y-2 p-1">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-14 w-full bg-muted" />
+              ))}
+            </div>
+          ) : sorted.length === 0 ? (
+            <div className="flex flex-col items-center py-10 text-center px-3">
+              <FileText size={28} className="text-muted-foreground/30 mb-2" />
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                {search
+                  ? "No notes match your search"
+                  : `No notes for ${selectedSubject} yet`}
+              </p>
+            </div>
+          ) : (
+            <AnimatePresence>
+              {sorted.map((note) => (
+                <NoteListItem
+                  key={String(note.id)}
+                  note={note}
+                  isActive={activeNoteId === note.id}
+                  onSelect={() => setActiveNoteId(note.id)}
+                  onDelete={() => handleDelete(note.id)}
+                />
+              ))}
+            </AnimatePresence>
+          )}
+        </div>
+
+        {/* Count */}
+        <div className="px-3 py-2 border-t border-border">
+          <p className="text-[10px] text-muted-foreground">
+            {sorted.length} note{sorted.length !== 1 ? "s" : ""}
+            {search ? " found" : ` in ${selectedSubject}`}
+          </p>
+        </div>
+      </div>
+
+      {/* Editor Panel */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {activeNote ? (
+          <AnimatePresence mode="wait">
+            <NoteEditor
+              key={String(activeNote.id)}
+              note={activeNote}
+              onClose={() => setActiveNoteId(null)}
+            />
+          </AnimatePresence>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-center px-8">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="max-w-xs"
+            >
+              <div className="w-16 h-16 rounded-2xl bg-muted/30 border border-border flex items-center justify-center mx-auto mb-4">
+                <BookOpen size={24} className="text-muted-foreground/50" />
+              </div>
+              <p className="text-base font-display font-semibold text-foreground mb-1">
+                Select a note to edit
+              </p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Choose a note from the list, or create a new one. Your notes are
+                auto-saved as you type.
+              </p>
+            </motion.div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -92,9 +92,26 @@ export class ExternalBlob {
 export interface UserProfile {
     name: string;
 }
+export interface ExamSession {
+    id: bigint;
+    completedAt: string;
+    subject: string;
+    difficulty: string;
+    timeTakenSeconds: bigint;
+    totalQuestions: bigint;
+    correctAnswers: bigint;
+}
 export interface MonthlyLogEntry {
     date: string;
     count: bigint;
+}
+export interface NotebookEntry {
+    id: bigint;
+    title: string;
+    content: string;
+    subject: string;
+    createdAt: string;
+    updatedAt: string;
 }
 export interface SubjectTarget {
     name: string;
@@ -104,6 +121,23 @@ export interface StudySession {
     hours: number;
     subjectName: string;
     date: string;
+}
+export interface Question {
+    id: bigint;
+    subject: string;
+    difficulty: string;
+    createdAt: string;
+    correctAnswer: string;
+    questionText: string;
+    questionType: string;
+    options: Array<string>;
+}
+export interface NotepadEntry {
+    id: bigint;
+    content: string;
+    subject: string;
+    createdAt: string;
+    updatedAt: string;
 }
 export interface Subject {
     id: bigint;
@@ -130,27 +164,41 @@ export enum UserRole {
 export interface backendInterface {
     _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
     addMockScore(score: bigint): Promise<void>;
+    addNotebookEntry(subject: string, title: string, content: string, createdAt: string): Promise<void>;
+    addNotepadEntry(subject: string, content: string, createdAt: string): Promise<void>;
+    addQuestion(subject: string, questionText: string, questionType: string, options: Array<string>, correctAnswer: string, difficulty: string, createdAt: string): Promise<void>;
     addQuestions(subjectName: string, count: bigint): Promise<void>;
     addStudySession(subjectName: string, hours: number, date: string): Promise<void>;
     addSubject(name: string, description: string): Promise<void>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
+    deleteNotebookEntry(id: bigint): Promise<void>;
+    deleteNotepadEntry(id: bigint): Promise<void>;
+    deleteQuestion(id: bigint): Promise<void>;
     deleteSubject(subjectId: bigint): Promise<void>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
+    getExamSessions(): Promise<Array<ExamSession>>;
     getMockScores(): Promise<Array<bigint>>;
     getMonthlyLogs(): Promise<Array<MonthlyLogEntry>>;
+    getNotebookEntries(): Promise<Array<NotebookEntry>>;
+    getNotepadEntries(): Promise<Array<NotepadEntry>>;
     getQuestionProgress(): Promise<Array<SubjectQuestionProgress>>;
+    getQuestions(): Promise<Array<Question>>;
+    getQuestionsBySubject(subject: string): Promise<Array<Question>>;
     getStudySessions(): Promise<Array<StudySession>>;
     getSubjects(): Promise<Array<Subject>>;
     getTargets(): Promise<UserTargets>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
+    saveExamSession(subject: string, totalQuestions: bigint, correctAnswers: bigint, timeTakenSeconds: bigint, difficulty: string, completedAt: string): Promise<void>;
     saveMonthlyLog(date: string, count: bigint): Promise<void>;
     setQuestionCount(subjectName: string, count: bigint): Promise<void>;
     setStudySession(subjectName: string, hours: number, date: string): Promise<void>;
     setTargets(totalQuestionsGoal: bigint, dailyStudyHoursTarget: number, subjectTargets: Array<SubjectTarget>, planTotalDays: bigint): Promise<void>;
     toggleDay(subjectId: bigint, dayIndex: bigint): Promise<void>;
+    updateNotebookEntry(id: bigint, title: string, content: string, updatedAt: string): Promise<void>;
+    updateNotepadEntry(id: bigint, content: string, updatedAt: string): Promise<void>;
 }
 import type { UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
@@ -180,6 +228,48 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.addMockScore(arg0);
+            return result;
+        }
+    }
+    async addNotebookEntry(arg0: string, arg1: string, arg2: string, arg3: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.addNotebookEntry(arg0, arg1, arg2, arg3);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.addNotebookEntry(arg0, arg1, arg2, arg3);
+            return result;
+        }
+    }
+    async addNotepadEntry(arg0: string, arg1: string, arg2: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.addNotepadEntry(arg0, arg1, arg2);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.addNotepadEntry(arg0, arg1, arg2);
+            return result;
+        }
+    }
+    async addQuestion(arg0: string, arg1: string, arg2: string, arg3: Array<string>, arg4: string, arg5: string, arg6: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.addQuestion(arg0, arg1, arg2, arg3, arg4, arg5, arg6);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.addQuestion(arg0, arg1, arg2, arg3, arg4, arg5, arg6);
             return result;
         }
     }
@@ -239,6 +329,48 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async deleteNotebookEntry(arg0: bigint): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.deleteNotebookEntry(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.deleteNotebookEntry(arg0);
+            return result;
+        }
+    }
+    async deleteNotepadEntry(arg0: bigint): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.deleteNotepadEntry(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.deleteNotepadEntry(arg0);
+            return result;
+        }
+    }
+    async deleteQuestion(arg0: bigint): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.deleteQuestion(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.deleteQuestion(arg0);
+            return result;
+        }
+    }
     async deleteSubject(arg0: bigint): Promise<void> {
         if (this.processError) {
             try {
@@ -281,6 +413,20 @@ export class Backend implements backendInterface {
             return from_candid_UserRole_n4(this._uploadFile, this._downloadFile, result);
         }
     }
+    async getExamSessions(): Promise<Array<ExamSession>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getExamSessions();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getExamSessions();
+            return result;
+        }
+    }
     async getMockScores(): Promise<Array<bigint>> {
         if (this.processError) {
             try {
@@ -309,6 +455,34 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async getNotebookEntries(): Promise<Array<NotebookEntry>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getNotebookEntries();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getNotebookEntries();
+            return result;
+        }
+    }
+    async getNotepadEntries(): Promise<Array<NotepadEntry>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getNotepadEntries();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getNotepadEntries();
+            return result;
+        }
+    }
     async getQuestionProgress(): Promise<Array<SubjectQuestionProgress>> {
         if (this.processError) {
             try {
@@ -320,6 +494,34 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.getQuestionProgress();
+            return result;
+        }
+    }
+    async getQuestions(): Promise<Array<Question>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getQuestions();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getQuestions();
+            return result;
+        }
+    }
+    async getQuestionsBySubject(arg0: string): Promise<Array<Question>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getQuestionsBySubject(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getQuestionsBySubject(arg0);
             return result;
         }
     }
@@ -407,6 +609,20 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async saveExamSession(arg0: string, arg1: bigint, arg2: bigint, arg3: bigint, arg4: string, arg5: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.saveExamSession(arg0, arg1, arg2, arg3, arg4, arg5);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.saveExamSession(arg0, arg1, arg2, arg3, arg4, arg5);
+            return result;
+        }
+    }
     async saveMonthlyLog(arg0: string, arg1: bigint): Promise<void> {
         if (this.processError) {
             try {
@@ -474,6 +690,34 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.toggleDay(arg0, arg1);
+            return result;
+        }
+    }
+    async updateNotebookEntry(arg0: bigint, arg1: string, arg2: string, arg3: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.updateNotebookEntry(arg0, arg1, arg2, arg3);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.updateNotebookEntry(arg0, arg1, arg2, arg3);
+            return result;
+        }
+    }
+    async updateNotepadEntry(arg0: bigint, arg1: string, arg2: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.updateNotepadEntry(arg0, arg1, arg2);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.updateNotepadEntry(arg0, arg1, arg2);
             return result;
         }
     }

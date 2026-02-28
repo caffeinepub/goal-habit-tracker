@@ -8,8 +8,10 @@ import {
   GraduationCap,
   Home,
   LogOut,
+  NotebookPen,
   PlusCircle,
   Search,
+  StickyNote,
   Timer,
   User,
 } from "lucide-react";
@@ -32,6 +34,9 @@ const navItems: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "timer", label: "Pomodoro", icon: <Timer size={18} /> },
   { id: "studyplan", label: "Study Plan", icon: <Clock size={18} /> },
   { id: "questions", label: "Questions", icon: <BookOpen size={18} /> },
+  { id: "exam", label: "Exam Mode", icon: <GraduationCap size={18} /> },
+  { id: "notebook", label: "Notebook", icon: <NotebookPen size={18} /> },
+  { id: "notepad", label: "Notepad", icon: <StickyNote size={18} /> },
 ];
 
 function truncatePrincipal(principal: string): string {

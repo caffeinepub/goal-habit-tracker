@@ -1,12 +1,13 @@
 import Map "mo:core/Map";
 import Nat "mo:core/Nat";
-import Iter "mo:core/Iter";
 import Array "mo:core/Array";
 import Principal "mo:core/Principal";
+import Set "mo:core/Set";
 import Runtime "mo:core/Runtime";
 
 import MixinAuthorization "authorization/MixinAuthorization";
 import AccessControl "authorization/access-control";
+
 
 
 actor {
@@ -58,12 +59,113 @@ actor {
     planTotalDays : Nat;
   };
 
+  // New Types for Question Bank, Exam Sessions, Notebook, Notepad
+  type Question = {
+    id : Nat;
+    subject : Text;
+    questionText : Text;
+    questionType : Text;
+    options : [Text]; // For MCQ
+    correctAnswer : Text;
+    difficulty : Text;
+    createdAt : Text;
+  };
+
+  type ExamSession = {
+    id : Nat;
+    subject : Text;
+    totalQuestions : Nat;
+    correctAnswers : Nat;
+    timeTakenSeconds : Nat;
+    difficulty : Text;
+    completedAt : Text;
+  };
+
+  type NotebookEntry = {
+    id : Nat;
+    subject : Text;
+    title : Text;
+    content : Text;
+    createdAt : Text;
+    updatedAt : Text;
+  };
+
+  type NotepadEntry = {
+    id : Nat;
+    subject : Text;
+    content : Text;
+    createdAt : Text;
+    updatedAt : Text;
+  };
+
+  type UserEntries = {
+    nextQuestionId : Nat;
+    nextExamSessionId : Nat;
+    nextNotebookEntryId : Nat;
+    nextNotepadEntryId : Nat;
+    questions : [Question];
+    examSessions : [ExamSession];
+    notebookEntries : [NotebookEntry];
+    notepadEntries : [NotepadEntry];
+  };
+
+  let accessControlState = AccessControl.initState();
+  include MixinAuthorization(accessControlState);
+
+  // Persistent stores
   let nextSubjectIdStore = Map.empty<Principal, Nat>();
   let userDataStore = Map.empty<Principal, UserData>();
   let userProfiles = Map.empty<Principal, UserProfile>();
   let userTargetsStore = Map.empty<Principal, UserTargets>();
-  let accessControlState = AccessControl.initState();
-  include MixinAuthorization(accessControlState);
+  let userEntriesStore = Map.empty<Principal, UserEntries>();
+
+  // Helper function to auto-register authenticated users
+  func ensureUserRegistered(caller : Principal) {
+    // Check if caller is anonymous
+    if (caller.isAnonymous()) {
+      Runtime.trap("Unauthorized: Anonymous users cannot access this resource");
+    };
+    
+    // Auto-register authenticated users who don't have a role yet
+    let currentRole = AccessControl.getUserRole(accessControlState, caller);
+    switch (currentRole) {
+      case (#guest) {
+        // Auto-assign user role to authenticated non-anonymous callers
+        AccessControl.assignRole(accessControlState, caller, caller, #user);
+      };
+      case (#user or #admin) {
+        // Already registered, do nothing
+      };
+    };
+  };
+
+  // Helper function to check user permission with auto-registration
+  func requireUserPermission(caller : Principal) {
+    ensureUserRegistered(caller);
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can perform this action");
+    };
+  };
+
+  func getOrCreateUserEntries(p : Principal) : UserEntries {
+    switch (userEntriesStore.get(p)) {
+      case (null) {
+        let newEntries = {
+          nextQuestionId = 1;
+          nextExamSessionId = 1;
+          nextNotebookEntryId = 1;
+          nextNotepadEntryId = 1;
+          questions = [];
+          examSessions = [];
+          notebookEntries = [];
+          notepadEntries = [];
+        };
+        userEntriesStore.add(p, newEntries);
+        newEntries;
+      };
+      case (?entries) { entries };
+    };
+  };
 
   // Helper function to get or create user data
   func getOrCreateUserData(p : Principal) : UserData {
@@ -107,36 +209,30 @@ actor {
     ];
   };
 
+  // Existing Functionality...
+
   // User Profile Functions
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view profiles");
-    };
+    requireUserPermission(caller);
     userProfiles.get(caller);
   };
 
   public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view profiles");
-    };
-    if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
+    requireUserPermission(caller);
+    if (not Principal.equal(caller, user) and not AccessControl.isAdmin(accessControlState, caller)) {
       Runtime.trap("Unauthorized: Can only view your own profile");
     };
     userProfiles.get(user);
   };
 
   public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can save profiles");
-    };
+    requireUserPermission(caller);
     userProfiles.add(caller, profile);
   };
 
   // Target Functions
   public query ({ caller }) func getTargets() : async UserTargets {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view targets");
-    };
+    requireUserPermission(caller);
     switch (userTargetsStore.get(caller)) {
       case (null) { defaultTargets() };
       case (?targets) { targets };
@@ -149,9 +245,7 @@ actor {
     subjectTargets : [SubjectTarget],
     planTotalDays : Nat,
   ) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can set targets");
-    };
+    requireUserPermission(caller);
     let newTargets : UserTargets = {
       totalQuestionsGoal;
       dailyStudyHoursTarget;
@@ -163,16 +257,12 @@ actor {
 
   // Subject Functions
   public query ({ caller }) func getSubjects() : async [Subject] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view subjects");
-    };
+    requireUserPermission(caller);
     getOrCreateUserData(caller).subjects;
   };
 
   public shared ({ caller }) func addSubject(name : Text, description : Text) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can add subjects");
-    };
+    requireUserPermission(caller);
     let newSubject : Subject = {
       id = getAndIncrementSubjectId(caller);
       name;
@@ -187,9 +277,7 @@ actor {
   };
 
   public shared ({ caller }) func deleteSubject(subjectId : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can delete subjects");
-    };
+    requireUserPermission(caller);
     let userData = getOrCreateUserData(caller);
 
     let updatedSubjects = userData.subjects.filter(
@@ -206,9 +294,7 @@ actor {
   };
 
   public shared ({ caller }) func toggleDay(subjectId : Nat, dayIndex : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can toggle days");
-    };
+    requireUserPermission(caller);
     let userData = getOrCreateUserData(caller);
 
     let subjectIndex = switch (userData.subjects.findIndex(func(s) { s.id == subjectId })) {
@@ -238,16 +324,12 @@ actor {
 
   // Mock Score Functions
   public query ({ caller }) func getMockScores() : async [Nat] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view mock scores");
-    };
+    requireUserPermission(caller);
     getOrCreateUserData(caller).mockScores;
   };
 
   public shared ({ caller }) func addMockScore(score : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can add mock scores");
-    };
+    requireUserPermission(caller);
     let userData = getOrCreateUserData(caller);
     let updatedScores = userData.mockScores.concat([score]);
     userDataStore.add(caller, { userData with mockScores = updatedScores });
@@ -255,9 +337,7 @@ actor {
 
   // Study Session Functions
   public shared ({ caller }) func addStudySession(subjectName : Text, hours : Float, date : Text) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can add study sessions");
-    };
+    requireUserPermission(caller);
     let userData = getOrCreateUserData(caller);
 
     let newSession : StudySession = {
@@ -271,16 +351,12 @@ actor {
   };
 
   public query ({ caller }) func getStudySessions() : async [StudySession] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view study sessions");
-    };
+    requireUserPermission(caller);
     getOrCreateUserData(caller).studySessions;
   };
 
   public shared ({ caller }) func setStudySession(subjectName : Text, hours : Float, date : Text) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can set study sessions");
-    };
+    requireUserPermission(caller);
     let userData = getOrCreateUserData(caller);
 
     let filteredSessions = userData.studySessions.filter(
@@ -302,9 +378,7 @@ actor {
 
   // Question Progress Functions
   public shared ({ caller }) func addQuestions(subjectName : Text, count : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can add questions");
-    };
+    requireUserPermission(caller);
     let userData = getOrCreateUserData(caller);
 
     let currentProgress = userData.questionProgress.filter(
@@ -334,16 +408,12 @@ actor {
   };
 
   public query ({ caller }) func getQuestionProgress() : async [SubjectQuestionProgress] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view question progress");
-    };
+    requireUserPermission(caller);
     getOrCreateUserData(caller).questionProgress;
   };
 
   public shared ({ caller }) func setQuestionCount(subjectName : Text, count : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can set question count");
-    };
+    requireUserPermission(caller);
     let userData = getOrCreateUserData(caller);
 
     let filteredProgress = userData.questionProgress.filter(
@@ -364,9 +434,7 @@ actor {
 
   // Monthly Log Functions
   public shared ({ caller }) func saveMonthlyLog(date : Text, count : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can save monthly logs");
-    };
+    requireUserPermission(caller);
     let userData = getOrCreateUserData(caller);
 
     let filteredLogs = userData.monthlyLogs.filter(
@@ -386,9 +454,202 @@ actor {
   };
 
   public query ({ caller }) func getMonthlyLogs() : async [MonthlyLogEntry] {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view monthly logs");
-    };
+    requireUserPermission(caller);
     getOrCreateUserData(caller).monthlyLogs;
+  };
+
+  // ----- NEW Functionality -----
+
+  // QUESTION BANK FUNCTIONS
+  public shared ({ caller }) func addQuestion(subject : Text, questionText : Text, questionType : Text, options : [Text], correctAnswer : Text, difficulty : Text, createdAt : Text) : async () {
+    requireUserPermission(caller);
+    let entries = getOrCreateUserEntries(caller);
+
+    let newQuestion : Question = {
+      id = entries.nextQuestionId;
+      subject;
+      questionText;
+      questionType;
+      options;
+      correctAnswer;
+      difficulty;
+      createdAt;
+    };
+
+    let updatedQuestions = entries.questions.concat([newQuestion]);
+    let updatedEntries = {
+      entries with
+      nextQuestionId = entries.nextQuestionId + 1;
+      questions = updatedQuestions;
+    };
+
+    userEntriesStore.add(caller, updatedEntries);
+  };
+
+  public query ({ caller }) func getQuestions() : async [Question] {
+    requireUserPermission(caller);
+    getOrCreateUserEntries(caller).questions;
+  };
+
+  public query ({ caller }) func getQuestionsBySubject(subject : Text) : async [Question] {
+    requireUserPermission(caller);
+    let entries = getOrCreateUserEntries(caller);
+    entries.questions.filter(func(q) { q.subject == subject });
+  };
+
+  public shared ({ caller }) func deleteQuestion(id : Nat) : async () {
+    requireUserPermission(caller);
+    let entries = getOrCreateUserEntries(caller);
+
+    let updatedQuestions = entries.questions.filter(func(q) { q.id != id });
+
+    if (entries.questions.size() == updatedQuestions.size()) {
+      Runtime.trap("Question not found");
+    };
+
+    userEntriesStore.add(caller, { entries with questions = updatedQuestions });
+  };
+
+  // EXAM SESSION FUNCTIONS
+  public shared ({ caller }) func saveExamSession(subject : Text, totalQuestions : Nat, correctAnswers : Nat, timeTakenSeconds : Nat, difficulty : Text, completedAt : Text) : async () {
+    requireUserPermission(caller);
+    let entries = getOrCreateUserEntries(caller);
+
+    let newSession : ExamSession = {
+      id = entries.nextExamSessionId;
+      subject;
+      totalQuestions;
+      correctAnswers;
+      timeTakenSeconds;
+      difficulty;
+      completedAt;
+    };
+
+    let updatedSessions = entries.examSessions.concat([newSession]);
+    let updatedEntries = {
+      entries with
+      nextExamSessionId = entries.nextExamSessionId + 1;
+      examSessions = updatedSessions;
+    };
+
+    userEntriesStore.add(caller, updatedEntries);
+  };
+
+  public query ({ caller }) func getExamSessions() : async [ExamSession] {
+    requireUserPermission(caller);
+    getOrCreateUserEntries(caller).examSessions;
+  };
+
+  // NOTEBOOK ENTRY FUNCTIONS
+  public shared ({ caller }) func addNotebookEntry(subject : Text, title : Text, content : Text, createdAt : Text) : async () {
+    requireUserPermission(caller);
+    let entries = getOrCreateUserEntries(caller);
+
+    let newEntry : NotebookEntry = {
+      id = entries.nextNotebookEntryId;
+      subject;
+      title;
+      content;
+      createdAt;
+      updatedAt = createdAt;
+    };
+
+    let updatedEntriesList = entries.notebookEntries.concat([newEntry]);
+    let updatedEntries = {
+      entries with
+      nextNotebookEntryId = entries.nextNotebookEntryId + 1;
+      notebookEntries = updatedEntriesList;
+    };
+
+    userEntriesStore.add(caller, updatedEntries);
+  };
+
+  public shared ({ caller }) func updateNotebookEntry(id : Nat, title : Text, content : Text, updatedAt : Text) : async () {
+    requireUserPermission(caller);
+    let entries = getOrCreateUserEntries(caller);
+
+    let updatedEntriesList = entries.notebookEntries.map(
+      func(entry) {
+        if (entry.id == id) {
+          { entry with title; content; updatedAt };
+        } else { entry };
+      }
+    );
+
+    userEntriesStore.add(caller, { entries with notebookEntries = updatedEntriesList });
+  };
+
+  public shared ({ caller }) func deleteNotebookEntry(id : Nat) : async () {
+    requireUserPermission(caller);
+    let entries = getOrCreateUserEntries(caller);
+
+    let updatedEntriesList = entries.notebookEntries.filter(func(e) { e.id != id });
+
+    if (entries.notebookEntries.size() == updatedEntriesList.size()) {
+      Runtime.trap("Notebook entry not found");
+    };
+
+    userEntriesStore.add(caller, { entries with notebookEntries = updatedEntriesList });
+  };
+
+  public query ({ caller }) func getNotebookEntries() : async [NotebookEntry] {
+    requireUserPermission(caller);
+    getOrCreateUserEntries(caller).notebookEntries;
+  };
+
+  // NOTEPAD ENTRY FUNCTIONS
+  public shared ({ caller }) func addNotepadEntry(subject : Text, content : Text, createdAt : Text) : async () {
+    requireUserPermission(caller);
+    let entries = getOrCreateUserEntries(caller);
+
+    let newEntry : NotepadEntry = {
+      id = entries.nextNotepadEntryId;
+      subject;
+      content;
+      createdAt;
+      updatedAt = createdAt;
+    };
+
+    let updatedEntriesList = entries.notepadEntries.concat([newEntry]);
+    let updatedEntries = {
+      entries with
+      nextNotepadEntryId = entries.nextNotepadEntryId + 1;
+      notepadEntries = updatedEntriesList;
+    };
+
+    userEntriesStore.add(caller, updatedEntries);
+  };
+
+  public shared ({ caller }) func updateNotepadEntry(id : Nat, content : Text, updatedAt : Text) : async () {
+    requireUserPermission(caller);
+    let entries = getOrCreateUserEntries(caller);
+
+    let updatedEntriesList = entries.notepadEntries.map(
+      func(entry) {
+        if (entry.id == id) {
+          { entry with content; updatedAt };
+        } else { entry };
+      }
+    );
+
+    userEntriesStore.add(caller, { entries with notepadEntries = updatedEntriesList });
+  };
+
+  public shared ({ caller }) func deleteNotepadEntry(id : Nat) : async () {
+    requireUserPermission(caller);
+    let entries = getOrCreateUserEntries(caller);
+
+    let updatedEntriesList = entries.notepadEntries.filter(func(e) { e.id != id });
+
+    if (entries.notepadEntries.size() == updatedEntriesList.size()) {
+      Runtime.trap("Notepad entry not found");
+    };
+
+    userEntriesStore.add(caller, { entries with notepadEntries = updatedEntriesList });
+  };
+
+  public query ({ caller }) func getNotepadEntries() : async [NotepadEntry] {
+    requireUserPermission(caller);
+    getOrCreateUserEntries(caller).notepadEntries;
   };
 };
