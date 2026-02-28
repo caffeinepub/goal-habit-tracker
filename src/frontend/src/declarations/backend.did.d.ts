@@ -10,23 +10,20 @@ import type { ActorMethod } from '@icp-sdk/core/agent';
 import type { IDL } from '@icp-sdk/core/candid';
 import type { Principal } from '@icp-sdk/core/principal';
 
-export interface Goal {
+export interface Subject {
   'id' : bigint,
-  'title' : string,
+  'days' : Array<boolean>,
+  'name' : string,
   'description' : string,
-  'targetCount' : bigint,
+  'isWeak' : boolean,
 }
-export interface ProgressEntry { 'date' : string, 'count' : bigint }
 export interface _SERVICE {
-  'createGoal' : ActorMethod<[string, string, bigint], Goal>,
-  'deleteGoal' : ActorMethod<[bigint], undefined>,
-  'getCompletionCount' : ActorMethod<[bigint], bigint>,
-  'getEntriesForGoal' : ActorMethod<[bigint], Array<string>>,
-  'getGoals' : ActorMethod<[], Array<Goal>>,
-  'getProgressEntries' : ActorMethod<[bigint], Array<ProgressEntry>>,
-  'isCompleted' : ActorMethod<[bigint, string], boolean>,
-  'logCompletion' : ActorMethod<[bigint, string], undefined>,
-  'updateGoal' : ActorMethod<[bigint, string, string, bigint], undefined>,
+  'addMockScore' : ActorMethod<[bigint], undefined>,
+  'addSubject' : ActorMethod<[string, string], undefined>,
+  'deleteSubject' : ActorMethod<[bigint], undefined>,
+  'getMockScores' : ActorMethod<[], Array<bigint>>,
+  'getSubjects' : ActorMethod<[], Array<Subject>>,
+  'toggleDay' : ActorMethod<[bigint, bigint], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

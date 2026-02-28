@@ -16,8 +16,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        display: ['Geist', 'SF Pro Display', '-apple-system', 'system-ui', 'sans-serif'],
-        body: ['Geist', 'SF Pro Text', '-apple-system', 'system-ui', 'sans-serif'],
+        display: ['Cabinet Grotesk', 'system-ui', 'sans-serif'],
+        body: ['Satoshi', 'system-ui', 'sans-serif'],
         mono: ['Geist Mono', 'SF Mono', 'Consolas', 'monospace'],
       },
       colors: {
@@ -79,9 +79,10 @@ export default {
       },
       boxShadow: {
         xs: "0 1px 2px 0 rgba(0,0,0,0.05)",
-        glow: "0 0 24px oklch(0.72 0.19 155 / 0.35)",
-        "glow-sm": "0 0 12px oklch(0.72 0.19 155 / 0.25)",
-        card: "0 4px 32px oklch(0 0 0 / 0.5)",
+        glow: "0 0 24px oklch(0.62 0.22 25 / 0.4)",
+        "glow-sm": "0 0 12px oklch(0.62 0.22 25 / 0.3)",
+        card: "0 4px 40px oklch(0 0 0 / 0.6)",
+        "crimson-glow": "0 0 20px oklch(0.62 0.22 25 / 0.5)",
       },
       keyframes: {
         "accordion-down": {

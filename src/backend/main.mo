@@ -1,187 +1,113 @@
 import Map "mo:core/Map";
-import Set "mo:core/Set";
-import Order "mo:core/Order";
-import Runtime "mo:core/Runtime";
+import Nat "mo:core/Nat";
 import Array "mo:core/Array";
 import Iter "mo:core/Iter";
 import Principal "mo:core/Principal";
-import Time "mo:core/Time";
+import Runtime "mo:core/Runtime";
+import Migration "migration";
 
+(with migration = Migration.run)
 actor {
-  module Keys {
-    public func compare(key1 : (Principal, Nat), key2 : (Principal, Nat)) : Order.Order {
-      switch (Principal.compare(key1.0, key2.0)) {
-        case (#less) { #less };
-        case (#greater) { #greater };
-        case (#equal) { Nat.compare(key1.1, key2.1) };
-      };
-    };
-  };
-
-  module Goal {
-    type Goal = {
-      id : Nat;
-      title : Text;
-      description : Text;
-      targetCount : Nat;
-    };
-
-    public func compare(goal1 : Goal, goal2 : Goal) : Order.Order {
-      Nat.compare(goal1.id, goal2.id);
-    };
-  };
-
-  module GoalEntry {
-    type GoalEntry = {
-      goalId : Nat;
-      date : Text;
-      timestamp : Time.Time;
-    };
-
-    public func compare(entry1 : GoalEntry, entry2 : GoalEntry) : Order.Order {
-      switch (Nat.compare(entry1.goalId, entry2.goalId)) {
-        case (#less) { #less };
-        case (#greater) { #greater };
-        case (#equal) { Text.compare(entry1.date, entry2.date) };
-      };
-    };
-  };
-
-  type Goal = {
+  type Subject = {
     id : Nat;
-    title : Text;
+    name : Text;
     description : Text;
-    targetCount : Nat;
+    days : [Bool];
+    isWeak : Bool;
   };
 
-  type GoalEntry = {
-    goalId : Nat;
-    date : Text;
-    timestamp : Time.Time;
+  type UserData = {
+    subjects : [Subject];
+    mockScores : [Nat];
   };
 
-  type ProgressEntry = {
-    date : Text;
-    count : Nat;
+  var nextSubjectId = 0;
+  let userDataStore = Map.empty<Principal, UserData>();
+
+  func getOrCreateUserData(p : Principal) : UserData {
+    switch (userDataStore.get(p)) {
+      case (null) {
+        let newData = {
+          subjects = [];
+          mockScores = [];
+        };
+        userDataStore.add(p, newData);
+        newData;
+      };
+      case (?data) { data };
+    };
   };
 
-  // Storage
-  var nextGoalId = 0;
+  public query ({ caller }) func getSubjects() : async [Subject] {
+    getOrCreateUserData(caller).subjects;
+  };
 
-  let goals = Map.empty<(Principal, Nat), Goal>();
-  let goalEntries = Set.empty<GoalEntry>();
-
-  // Goal Management
-  public shared ({ caller }) func createGoal(title : Text, description : Text, targetCount : Nat) : async Goal {
-    let goalId = nextGoalId;
-    let goal = {
-      id = goalId;
-      title;
+  public shared ({ caller }) func addSubject(name : Text, description : Text) : async () {
+    let newSubject : Subject = {
+      id = nextSubjectId;
+      name;
       description;
-      targetCount;
+      days = Array.tabulate<Bool>(30, func(_) { false });
+      isWeak = false;
     };
+    nextSubjectId += 1;
 
-    goals.add((caller, goalId), goal);
-    nextGoalId += 1;
-    goal;
+    let userData = getOrCreateUserData(caller);
+    let updatedSubjects = userData.subjects.concat([newSubject]);
+    userDataStore.add(caller, { userData with subjects = updatedSubjects });
   };
 
-  public query ({ caller }) func getGoals() : async [Goal] {
-    goals.filter(func((key, _)) { key.0 == caller }).values().toArray();
-  };
+  public shared ({ caller }) func deleteSubject(subjectId : Nat) : async () {
+    let userData = getOrCreateUserData(caller);
 
-  public shared ({ caller }) func updateGoal(goalId : Nat, title : Text, description : Text, targetCount : Nat) : async () {
-    let key = (caller, goalId);
-
-    let updatedGoal = switch (goals.get(key)) {
-      case (null) { Runtime.trap("Goal does not exist") };
-      case (?_goal) {
-        {
-          id = goalId;
-          title;
-          description;
-          targetCount;
-        };
-      };
-    };
-
-    goals.add(key, updatedGoal);
-  };
-
-  public shared ({ caller }) func deleteGoal(goalId : Nat) : async () {
-    let key = (caller, goalId);
-    if (not goals.containsKey((caller, goalId))) { Runtime.trap("Goal does not exist") };
-    goals.remove(key);
-
-    // Remove related entries
-    let entriesToRemove = getEntriesForGoalInternal(caller, goalId);
-    for (entry in entriesToRemove) {
-      goalEntries.remove(entry);
-    };
-  };
-
-  // Entry and Completion Tracking
-  public shared ({ caller }) func logCompletion(goalId : Nat, date : Text) : async () {
-    let entry : GoalEntry = {
-      goalId;
-      date;
-      timestamp = Time.now();
-    };
-
-    if (not goals.containsKey((caller, goalId))) { Runtime.trap("Goal does not exist") };
-
-    // Toggle completion
-    if (goalEntries.contains(entry)) {
-      goalEntries.remove(entry);
-    } else {
-      goalEntries.add(entry);
-    };
-  };
-
-  public shared ({ caller }) func isCompleted(goalId : Nat, date : Text) : async Bool {
-    let entry : GoalEntry = {
-      goalId;
-      date;
-      timestamp = Time.now();
-    };
-    goalEntries.contains(entry);
-  };
-
-  public query ({ caller }) func getEntriesForGoal(goalId : Nat) : async [Text] {
-    getEntriesForGoalInternal(caller, goalId).map(func(entry) { entry.date; }).toArray();
-  };
-
-  func getEntriesForGoalInternal(owner : Principal, goalId : Nat) : Iter.Iter<GoalEntry> {
-    goalEntries.filter(
-      func(entry) {
-        switch (goals.get((owner, goalId))) {
-          case (null) { false };
-          case (?_) {
-            entry.goalId == goalId;
-          };
-        };
+    let updatedSubjects = userData.subjects.filter(
+      func(subject) {
+        subject.id != subjectId;
       }
-    ).values();
-  };
+    );
 
-  // Progress Computation
-  public query ({ caller }) func getCompletionCount(goalId : Nat) : async Nat {
-    getEntriesForGoalInternal(caller, goalId).size();
-  };
-
-  public query ({ caller }) func getProgressEntries(goalId : Nat) : async [ProgressEntry] {
-    // Group entries by date
-    let entries = getEntriesForGoalInternal(caller, goalId).toArray();
-    let progressMap = Map.empty<Text, Nat>();
-
-    for (entry in entries.values()) {
-      let currentCount = switch (progressMap.get(entry.date)) {
-        case (null) { 0 };
-        case (?count) { count };
-      };
-      progressMap.add(entry.date, currentCount + 1);
+    if (updatedSubjects.size() == userData.subjects.size()) {
+      Runtime.trap("Subject not found");
     };
 
-    progressMap.entries().map(func((date, count)) { { date; count } }).toArray();
+    userDataStore.add(caller, { userData with subjects = updatedSubjects });
+  };
+
+  public shared ({ caller }) func toggleDay(subjectId : Nat, dayIndex : Nat) : async () {
+    let userData = getOrCreateUserData(caller);
+
+    let subjectIndex = switch (userData.subjects.findIndex(func(s) { s.id == subjectId })) {
+      case (null) { Runtime.trap("Subject not found") };
+      case (?idx) { idx };
+    };
+
+    let toggledSubjects = Array.tabulate(
+      userData.subjects.size(),
+      func(i) {
+        if (i == subjectIndex) {
+          let toggledDays = Array.tabulate(
+            userData.subjects[i].days.size(),
+            func(j) {
+              if (j == dayIndex) { not userData.subjects[i].days[j] } else {
+                userData.subjects[i].days[j];
+              };
+            },
+          );
+          { userData.subjects[i] with days = toggledDays };
+        } else { userData.subjects[i] };
+      },
+    );
+
+    userDataStore.add(caller, { userData with subjects = toggledSubjects });
+  };
+
+  public query ({ caller }) func getMockScores() : async [Nat] {
+    getOrCreateUserData(caller).mockScores;
+  };
+
+  public shared ({ caller }) func addMockScore(score : Nat) : async () {
+    let userData = getOrCreateUserData(caller);
+    let updatedScores = userData.mockScores.concat([score]);
+    userDataStore.add(caller, { userData with mockScores = updatedScores });
   };
 };

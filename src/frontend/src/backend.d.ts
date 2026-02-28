@@ -7,24 +7,18 @@ export interface None {
     __kind__: "None";
 }
 export type Option<T> = Some<T> | None;
-export interface ProgressEntry {
-    date: string;
-    count: bigint;
-}
-export interface Goal {
+export interface Subject {
     id: bigint;
-    title: string;
+    days: Array<boolean>;
+    name: string;
     description: string;
-    targetCount: bigint;
+    isWeak: boolean;
 }
 export interface backendInterface {
-    createGoal(title: string, description: string, targetCount: bigint): Promise<Goal>;
-    deleteGoal(goalId: bigint): Promise<void>;
-    getCompletionCount(goalId: bigint): Promise<bigint>;
-    getEntriesForGoal(goalId: bigint): Promise<Array<string>>;
-    getGoals(): Promise<Array<Goal>>;
-    getProgressEntries(goalId: bigint): Promise<Array<ProgressEntry>>;
-    isCompleted(goalId: bigint, date: string): Promise<boolean>;
-    logCompletion(goalId: bigint, date: string): Promise<void>;
-    updateGoal(goalId: bigint, title: string, description: string, targetCount: bigint): Promise<void>;
+    addMockScore(score: bigint): Promise<void>;
+    addSubject(name: string, description: string): Promise<void>;
+    deleteSubject(subjectId: bigint): Promise<void>;
+    getMockScores(): Promise<Array<bigint>>;
+    getSubjects(): Promise<Array<Subject>>;
+    toggleDay(subjectId: bigint, dayIndex: bigint): Promise<void>;
 }

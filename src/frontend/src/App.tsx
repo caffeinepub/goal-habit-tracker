@@ -1,40 +1,87 @@
-import { useState } from "react";
-import { AnimatePresence } from "motion/react";
-import Dashboard from "./components/Dashboard";
-import GoalDetail from "./components/GoalDetail";
 import { Toaster } from "@/components/ui/sonner";
+import { useState } from "react";
+import AddSubjectTab from "./components/AddSubjectTab";
+import AnalyticsTab from "./components/AnalyticsTab";
+import HomeTab from "./components/HomeTab";
+import Sidebar from "./components/Sidebar";
+import TimerTab from "./components/TimerTab";
+import { useGetMockScores, useGetSubjects } from "./hooks/useQueries";
 
-type View =
-  | { type: "dashboard" }
-  | { type: "goal-detail"; goalId: bigint };
+export type TabId = "home" | "add" | "analytics" | "timer";
 
 export default function App() {
-  const [view, setView] = useState<View>({ type: "dashboard" });
+  const [activeTab, setActiveTab] = useState<TabId>("home");
+  const [search, setSearch] = useState("");
+
+  const { data: subjects = [], isLoading: subjectsLoading } = useGetSubjects();
+  const { data: mockScores = [], isLoading: scoresLoading } =
+    useGetMockScores();
+
+  const overallCompletion =
+    subjects.length === 0
+      ? 0
+      : Math.round(
+          subjects.reduce((acc, s) => {
+            const completed = s.days.filter(Boolean).length;
+            return acc + Math.round((completed / 30) * 100);
+          }, 0) / subjects.length,
+        );
+
+  const predictedScore =
+    mockScores.length === 0
+      ? 0
+      : Math.round(
+          mockScores.reduce((acc, s) => acc + Number(s), 0) /
+            mockScores.length +
+            overallCompletion / 10,
+        );
+
+  const weakSubjects = subjects.filter((s) => s.isWeak);
+  const timetable =
+    weakSubjects.length > 0
+      ? `Focus Today: ${weakSubjects.map((s) => s.name).join(", ")}`
+      : "Balanced Revision Day";
 
   return (
-    <div className="min-h-screen">
-      <AnimatePresence mode="wait">
-        {view.type === "dashboard" && (
-          <Dashboard
-            key="dashboard"
-            onViewGoal={(goalId) => setView({ type: "goal-detail", goalId })}
+    <div className="min-h-screen flex bg-background text-foreground">
+      <Sidebar
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        overallCompletion={overallCompletion}
+        search={search}
+        onSearchChange={setSearch}
+      />
+
+      <main className="flex-1 overflow-y-auto min-h-screen">
+        {activeTab === "home" && (
+          <HomeTab
+            subjects={subjects}
+            search={search}
+            isLoading={subjectsLoading}
+            overallCompletion={overallCompletion}
+            predictedScore={predictedScore}
+            timetable={timetable}
           />
         )}
-        {view.type === "goal-detail" && (
-          <GoalDetail
-            key={`goal-${view.goalId}`}
-            goalId={view.goalId}
-            onBack={() => setView({ type: "dashboard" })}
+        {activeTab === "add" && <AddSubjectTab />}
+        {activeTab === "analytics" && (
+          <AnalyticsTab
+            mockScores={mockScores}
+            isLoading={scoresLoading}
+            overallCompletion={overallCompletion}
+            predictedScore={predictedScore}
           />
         )}
-      </AnimatePresence>
+        {activeTab === "timer" && <TimerTab />}
+      </main>
+
       <Toaster
         theme="dark"
         toastOptions={{
           style: {
-            background: "oklch(0.19 0.02 252)",
-            border: "1px solid oklch(0.28 0.025 255)",
-            color: "oklch(0.95 0.01 240)",
+            background: "oklch(0.13 0.01 20)",
+            border: "1px solid oklch(0.25 0.015 20)",
+            color: "oklch(0.93 0.01 60)",
           },
         }}
       />

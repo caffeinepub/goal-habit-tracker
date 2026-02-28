@@ -89,152 +89,104 @@ export class ExternalBlob {
         return this;
     }
 }
-export interface ProgressEntry {
-    date: string;
-    count: bigint;
-}
-export interface Goal {
+export interface Subject {
     id: bigint;
-    title: string;
+    days: Array<boolean>;
+    name: string;
     description: string;
-    targetCount: bigint;
+    isWeak: boolean;
 }
 export interface backendInterface {
-    createGoal(title: string, description: string, targetCount: bigint): Promise<Goal>;
-    deleteGoal(goalId: bigint): Promise<void>;
-    getCompletionCount(goalId: bigint): Promise<bigint>;
-    getEntriesForGoal(goalId: bigint): Promise<Array<string>>;
-    getGoals(): Promise<Array<Goal>>;
-    getProgressEntries(goalId: bigint): Promise<Array<ProgressEntry>>;
-    isCompleted(goalId: bigint, date: string): Promise<boolean>;
-    logCompletion(goalId: bigint, date: string): Promise<void>;
-    updateGoal(goalId: bigint, title: string, description: string, targetCount: bigint): Promise<void>;
+    addMockScore(score: bigint): Promise<void>;
+    addSubject(name: string, description: string): Promise<void>;
+    deleteSubject(subjectId: bigint): Promise<void>;
+    getMockScores(): Promise<Array<bigint>>;
+    getSubjects(): Promise<Array<Subject>>;
+    toggleDay(subjectId: bigint, dayIndex: bigint): Promise<void>;
 }
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
-    async createGoal(arg0: string, arg1: string, arg2: bigint): Promise<Goal> {
+    async addMockScore(arg0: bigint): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.createGoal(arg0, arg1, arg2);
+                const result = await this.actor.addMockScore(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.createGoal(arg0, arg1, arg2);
+            const result = await this.actor.addMockScore(arg0);
             return result;
         }
     }
-    async deleteGoal(arg0: bigint): Promise<void> {
+    async addSubject(arg0: string, arg1: string): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.deleteGoal(arg0);
+                const result = await this.actor.addSubject(arg0, arg1);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.deleteGoal(arg0);
+            const result = await this.actor.addSubject(arg0, arg1);
             return result;
         }
     }
-    async getCompletionCount(arg0: bigint): Promise<bigint> {
+    async deleteSubject(arg0: bigint): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.getCompletionCount(arg0);
+                const result = await this.actor.deleteSubject(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getCompletionCount(arg0);
+            const result = await this.actor.deleteSubject(arg0);
             return result;
         }
     }
-    async getEntriesForGoal(arg0: bigint): Promise<Array<string>> {
+    async getMockScores(): Promise<Array<bigint>> {
         if (this.processError) {
             try {
-                const result = await this.actor.getEntriesForGoal(arg0);
+                const result = await this.actor.getMockScores();
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getEntriesForGoal(arg0);
+            const result = await this.actor.getMockScores();
             return result;
         }
     }
-    async getGoals(): Promise<Array<Goal>> {
+    async getSubjects(): Promise<Array<Subject>> {
         if (this.processError) {
             try {
-                const result = await this.actor.getGoals();
+                const result = await this.actor.getSubjects();
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getGoals();
+            const result = await this.actor.getSubjects();
             return result;
         }
     }
-    async getProgressEntries(arg0: bigint): Promise<Array<ProgressEntry>> {
+    async toggleDay(arg0: bigint, arg1: bigint): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.getProgressEntries(arg0);
+                const result = await this.actor.toggleDay(arg0, arg1);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getProgressEntries(arg0);
-            return result;
-        }
-    }
-    async isCompleted(arg0: bigint, arg1: string): Promise<boolean> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.isCompleted(arg0, arg1);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.isCompleted(arg0, arg1);
-            return result;
-        }
-    }
-    async logCompletion(arg0: bigint, arg1: string): Promise<void> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.logCompletion(arg0, arg1);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.logCompletion(arg0, arg1);
-            return result;
-        }
-    }
-    async updateGoal(arg0: bigint, arg1: string, arg2: string, arg3: bigint): Promise<void> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.updateGoal(arg0, arg1, arg2, arg3);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.updateGoal(arg0, arg1, arg2, arg3);
+            const result = await this.actor.toggleDay(arg0, arg1);
             return result;
         }
     }

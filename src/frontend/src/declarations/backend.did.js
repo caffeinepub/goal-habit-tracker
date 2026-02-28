@@ -8,58 +8,41 @@
 
 import { IDL } from '@icp-sdk/core/candid';
 
-export const Goal = IDL.Record({
+export const Subject = IDL.Record({
   'id' : IDL.Nat,
-  'title' : IDL.Text,
+  'days' : IDL.Vec(IDL.Bool),
+  'name' : IDL.Text,
   'description' : IDL.Text,
-  'targetCount' : IDL.Nat,
-});
-export const ProgressEntry = IDL.Record({
-  'date' : IDL.Text,
-  'count' : IDL.Nat,
+  'isWeak' : IDL.Bool,
 });
 
 export const idlService = IDL.Service({
-  'createGoal' : IDL.Func([IDL.Text, IDL.Text, IDL.Nat], [Goal], []),
-  'deleteGoal' : IDL.Func([IDL.Nat], [], []),
-  'getCompletionCount' : IDL.Func([IDL.Nat], [IDL.Nat], ['query']),
-  'getEntriesForGoal' : IDL.Func([IDL.Nat], [IDL.Vec(IDL.Text)], ['query']),
-  'getGoals' : IDL.Func([], [IDL.Vec(Goal)], ['query']),
-  'getProgressEntries' : IDL.Func(
-      [IDL.Nat],
-      [IDL.Vec(ProgressEntry)],
-      ['query'],
-    ),
-  'isCompleted' : IDL.Func([IDL.Nat, IDL.Text], [IDL.Bool], []),
-  'logCompletion' : IDL.Func([IDL.Nat, IDL.Text], [], []),
-  'updateGoal' : IDL.Func([IDL.Nat, IDL.Text, IDL.Text, IDL.Nat], [], []),
+  'addMockScore' : IDL.Func([IDL.Nat], [], []),
+  'addSubject' : IDL.Func([IDL.Text, IDL.Text], [], []),
+  'deleteSubject' : IDL.Func([IDL.Nat], [], []),
+  'getMockScores' : IDL.Func([], [IDL.Vec(IDL.Nat)], ['query']),
+  'getSubjects' : IDL.Func([], [IDL.Vec(Subject)], ['query']),
+  'toggleDay' : IDL.Func([IDL.Nat, IDL.Nat], [], []),
 });
 
 export const idlInitArgs = [];
 
 export const idlFactory = ({ IDL }) => {
-  const Goal = IDL.Record({
+  const Subject = IDL.Record({
     'id' : IDL.Nat,
-    'title' : IDL.Text,
+    'days' : IDL.Vec(IDL.Bool),
+    'name' : IDL.Text,
     'description' : IDL.Text,
-    'targetCount' : IDL.Nat,
+    'isWeak' : IDL.Bool,
   });
-  const ProgressEntry = IDL.Record({ 'date' : IDL.Text, 'count' : IDL.Nat });
   
   return IDL.Service({
-    'createGoal' : IDL.Func([IDL.Text, IDL.Text, IDL.Nat], [Goal], []),
-    'deleteGoal' : IDL.Func([IDL.Nat], [], []),
-    'getCompletionCount' : IDL.Func([IDL.Nat], [IDL.Nat], ['query']),
-    'getEntriesForGoal' : IDL.Func([IDL.Nat], [IDL.Vec(IDL.Text)], ['query']),
-    'getGoals' : IDL.Func([], [IDL.Vec(Goal)], ['query']),
-    'getProgressEntries' : IDL.Func(
-        [IDL.Nat],
-        [IDL.Vec(ProgressEntry)],
-        ['query'],
-      ),
-    'isCompleted' : IDL.Func([IDL.Nat, IDL.Text], [IDL.Bool], []),
-    'logCompletion' : IDL.Func([IDL.Nat, IDL.Text], [], []),
-    'updateGoal' : IDL.Func([IDL.Nat, IDL.Text, IDL.Text, IDL.Nat], [], []),
+    'addMockScore' : IDL.Func([IDL.Nat], [], []),
+    'addSubject' : IDL.Func([IDL.Text, IDL.Text], [], []),
+    'deleteSubject' : IDL.Func([IDL.Nat], [], []),
+    'getMockScores' : IDL.Func([], [IDL.Vec(IDL.Nat)], ['query']),
+    'getSubjects' : IDL.Func([], [IDL.Vec(Subject)], ['query']),
+    'toggleDay' : IDL.Func([IDL.Nat, IDL.Nat], [], []),
   });
 };
 
