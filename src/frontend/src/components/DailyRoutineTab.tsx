@@ -364,7 +364,6 @@ export default function DailyRoutineTab({
   const [copyFromDate, setCopyFromDate] = useState("");
 
   // ── 100-day progress table ────────────────────────────────────────────────
-  const [showAllDays, setShowAllDays] = useState(false);
   const [startDate, setStartDateState] = useState(getStartDate);
 
   // ── Load data when selected day changes ──────────────────────────────────
@@ -917,240 +916,245 @@ export default function DailyRoutineTab({
                   )}
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-sm">
-                    <thead>
-                      <tr className="bg-card/80">
-                        <th className="w-10 px-3 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                          #
-                        </th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[110px]">
-                          Time
-                        </th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[150px]">
-                          Activity
-                        </th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[100px]">
-                          Subject
-                        </th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-20">
-                          Duration
-                        </th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-24">
-                          Priority
-                        </th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[140px]">
-                          Notes
-                        </th>
-                        <th className="px-4 py-3 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-16">
-                          Done
-                        </th>
-                        {canEdit && (
-                          <th className="px-3 py-3 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-20">
-                            Actions
+                <ScrollArea className="max-h-96">
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-sm">
+                      <thead className="sticky top-0 z-10">
+                        <tr className="bg-card/95 backdrop-blur-sm">
+                          <th className="w-10 px-3 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                            #
                           </th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sorted.map((row, idx) => {
-                        const done = doneIds.has(row.id);
-                        const dur = calcDuration(row.startTime, row.endTime);
-                        const pStyle = PRIORITY_STYLES[row.priority];
+                          <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[110px]">
+                            Time
+                          </th>
+                          <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[150px]">
+                            Activity
+                          </th>
+                          <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[100px]">
+                            Subject
+                          </th>
+                          <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-20">
+                            Duration
+                          </th>
+                          <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-24">
+                            Priority
+                          </th>
+                          <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[140px]">
+                            Notes
+                          </th>
+                          <th className="px-4 py-3 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-16">
+                            Done
+                          </th>
+                          {canEdit && (
+                            <th className="px-3 py-3 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-20">
+                              Actions
+                            </th>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sorted.map((row, idx) => {
+                          const done = doneIds.has(row.id);
+                          const dur = calcDuration(row.startTime, row.endTime);
+                          const pStyle = PRIORITY_STYLES[row.priority];
 
-                        return (
-                          <tr
-                            key={row.id}
-                            className={`border-t border-border transition-colors group ${
-                              done
-                                ? "bg-emerald-500/5 hover:bg-emerald-500/8"
-                                : "hover:bg-accent/15"
-                            }`}
-                          >
-                            {/* # */}
-                            <td className="px-3 py-3 text-xs text-muted-foreground font-mono">
-                              {idx + 1}
-                            </td>
+                          return (
+                            <tr
+                              key={row.id}
+                              className={`border-t border-border transition-colors group ${
+                                done
+                                  ? "bg-emerald-500/5 hover:bg-emerald-500/8"
+                                  : "hover:bg-accent/15"
+                              }`}
+                            >
+                              {/* # */}
+                              <td className="px-3 py-3 text-xs text-muted-foreground font-mono">
+                                {idx + 1}
+                              </td>
 
-                            {/* Time */}
-                            <td className="px-4 py-3">
-                              <span
-                                className={`text-xs font-mono font-semibold ${done ? "text-muted-foreground line-through" : "text-foreground"}`}
-                              >
-                                {formatTime(row.startTime, timeFormat)} –{" "}
-                                {formatTime(row.endTime, timeFormat)}
-                              </span>
-                            </td>
-
-                            {/* Activity */}
-                            <td className="px-4 py-3">
-                              <span
-                                className={`text-sm font-medium ${done ? "text-muted-foreground line-through" : "text-foreground"}`}
-                              >
-                                {row.activity}
-                              </span>
-                            </td>
-
-                            {/* Subject */}
-                            <td className="px-4 py-3">
-                              {row.subject ? (
+                              {/* Time */}
+                              <td className="px-4 py-3">
                                 <span
-                                  className={`text-xs px-2 py-1 rounded-md bg-primary/10 text-primary border border-primary/20 font-medium ${done ? "opacity-50" : ""}`}
+                                  className={`text-xs font-mono font-semibold ${done ? "text-muted-foreground line-through" : "text-foreground"}`}
                                 >
-                                  {row.subject}
+                                  {formatTime(row.startTime, timeFormat)} –{" "}
+                                  {formatTime(row.endTime, timeFormat)}
                                 </span>
-                              ) : (
-                                <span className="text-muted-foreground/40 text-xs">
-                                  –
-                                </span>
-                              )}
-                            </td>
+                              </td>
 
-                            {/* Duration */}
-                            <td className="px-4 py-3">
-                              <span
-                                className={`text-xs font-mono ${done ? "text-muted-foreground" : "text-foreground"}`}
-                              >
-                                {formatDuration(dur)}
-                              </span>
-                            </td>
-
-                            {/* Priority */}
-                            <td className="px-4 py-3">
-                              <span
-                                className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border font-semibold ${pStyle.badge} ${done ? "opacity-50" : ""}`}
-                              >
+                              {/* Activity */}
+                              <td className="px-4 py-3">
                                 <span
-                                  className={`w-1.5 h-1.5 rounded-full ${pStyle.dot}`}
-                                />
-                                {pStyle.label}
-                              </span>
-                            </td>
+                                  className={`text-sm font-medium ${done ? "text-muted-foreground line-through" : "text-foreground"}`}
+                                >
+                                  {row.activity}
+                                </span>
+                              </td>
 
-                            {/* Notes */}
-                            <td className="px-4 py-3">
-                              <span
-                                className={`text-xs ${done ? "text-muted-foreground/50 line-through" : "text-muted-foreground"} max-w-[180px] block truncate`}
-                                title={row.notes}
-                              >
-                                {row.notes || "–"}
-                              </span>
-                            </td>
-
-                            {/* Done checkbox */}
-                            <td className="px-4 py-3 text-center">
-                              {dayType === "future" ? (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="inline-flex cursor-not-allowed opacity-40">
-                                      <Circle
-                                        size={20}
-                                        className="text-muted-foreground/40"
-                                      />
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent
-                                    side="top"
-                                    className="text-xs"
+                              {/* Subject */}
+                              <td className="px-4 py-3">
+                                {row.subject ? (
+                                  <span
+                                    className={`text-xs px-2 py-1 rounded-md bg-primary/10 text-primary border border-primary/20 font-medium ${done ? "opacity-50" : ""}`}
                                   >
-                                    Available on that day
-                                  </TooltipContent>
-                                </Tooltip>
-                              ) : dayType === "past" ? (
-                                done ? (
-                                  <CheckCircle2
-                                    size={20}
-                                    className="text-emerald-500/50 mx-auto"
-                                  />
+                                    {row.subject}
+                                  </span>
                                 ) : (
-                                  <Circle
-                                    size={20}
-                                    className="text-muted-foreground/25 mx-auto"
-                                  />
-                                )
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => toggleDone(row.id)}
-                                  aria-label={
-                                    done ? "Mark as not done" : "Mark as done"
-                                  }
-                                  className="transition-all hover:scale-110"
+                                  <span className="text-muted-foreground/40 text-xs">
+                                    –
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Duration */}
+                              <td className="px-4 py-3">
+                                <span
+                                  className={`text-xs font-mono ${done ? "text-muted-foreground" : "text-foreground"}`}
                                 >
-                                  {done ? (
+                                  {formatDuration(dur)}
+                                </span>
+                              </td>
+
+                              {/* Priority */}
+                              <td className="px-4 py-3">
+                                <span
+                                  className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border font-semibold ${pStyle.badge} ${done ? "opacity-50" : ""}`}
+                                >
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full ${pStyle.dot}`}
+                                  />
+                                  {pStyle.label}
+                                </span>
+                              </td>
+
+                              {/* Notes */}
+                              <td className="px-4 py-3">
+                                <span
+                                  className={`text-xs ${done ? "text-muted-foreground/50 line-through" : "text-muted-foreground"} max-w-[180px] block truncate`}
+                                  title={row.notes}
+                                >
+                                  {row.notes || "–"}
+                                </span>
+                              </td>
+
+                              {/* Done checkbox */}
+                              <td className="px-4 py-3 text-center">
+                                {dayType === "future" ? (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="inline-flex cursor-not-allowed opacity-40">
+                                        <Circle
+                                          size={20}
+                                          className="text-muted-foreground/40"
+                                        />
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      side="top"
+                                      className="text-xs"
+                                    >
+                                      Available on that day
+                                    </TooltipContent>
+                                  </Tooltip>
+                                ) : dayType === "past" ? (
+                                  done ? (
                                     <CheckCircle2
                                       size={20}
-                                      className="text-emerald-500"
+                                      className="text-emerald-500/50 mx-auto"
                                     />
                                   ) : (
                                     <Circle
                                       size={20}
-                                      className="text-muted-foreground/40 hover:text-emerald-400 transition-colors"
+                                      className="text-muted-foreground/25 mx-auto"
                                     />
-                                  )}
-                                </button>
+                                  )
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleDone(row.id)}
+                                    aria-label={
+                                      done ? "Mark as not done" : "Mark as done"
+                                    }
+                                    className="transition-all hover:scale-110"
+                                  >
+                                    {done ? (
+                                      <CheckCircle2
+                                        size={20}
+                                        className="text-emerald-500"
+                                      />
+                                    ) : (
+                                      <Circle
+                                        size={20}
+                                        className="text-muted-foreground/40 hover:text-emerald-400 transition-colors"
+                                      />
+                                    )}
+                                  </button>
+                                )}
+                              </td>
+
+                              {/* Actions — only for editable days */}
+                              {canEdit && (
+                                <td className="px-3 py-3 text-center">
+                                  <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                      type="button"
+                                      onClick={() => openEdit(row)}
+                                      aria-label="Edit task"
+                                      className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                                    >
+                                      <Pencil size={13} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDelete(row.id)}
+                                      aria-label="Delete task"
+                                      className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+
+                      {/* Footer: total duration */}
+                      {rows.length > 0 && (
+                        <tfoot>
+                          <tr className="border-t border-border bg-card/60">
+                            <td
+                              colSpan={canEdit ? 4 : 4}
+                              className="px-4 py-2.5 text-xs text-muted-foreground font-semibold"
+                            >
+                              Total scheduled
+                            </td>
+                            <td className="px-4 py-2.5 text-xs font-mono font-bold text-primary">
+                              {formatDuration(totalDuration)}
+                            </td>
+                            <td
+                              colSpan={canEdit ? 4 : 3}
+                              className="px-4 py-2.5"
+                            >
+                              {dayType !== "past" && rows.length > 0 && (
+                                <div className="flex items-center gap-2 justify-end">
+                                  <Clock
+                                    size={12}
+                                    className="text-muted-foreground"
+                                  />
+                                  <span className="text-xs text-muted-foreground">
+                                    {doneCount}/{rows.length} complete
+                                  </span>
+                                </div>
                               )}
                             </td>
-
-                            {/* Actions — only for editable days */}
-                            {canEdit && (
-                              <td className="px-3 py-3 text-center">
-                                <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button
-                                    type="button"
-                                    onClick={() => openEdit(row)}
-                                    aria-label="Edit task"
-                                    className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                                  >
-                                    <Pencil size={13} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDelete(row.id)}
-                                    aria-label="Delete task"
-                                    className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
-                                </div>
-                              </td>
-                            )}
                           </tr>
-                        );
-                      })}
-                    </tbody>
-
-                    {/* Footer: total duration */}
-                    {rows.length > 0 && (
-                      <tfoot>
-                        <tr className="border-t border-border bg-card/60">
-                          <td
-                            colSpan={canEdit ? 4 : 4}
-                            className="px-4 py-2.5 text-xs text-muted-foreground font-semibold"
-                          >
-                            Total scheduled
-                          </td>
-                          <td className="px-4 py-2.5 text-xs font-mono font-bold text-primary">
-                            {formatDuration(totalDuration)}
-                          </td>
-                          <td colSpan={canEdit ? 4 : 3} className="px-4 py-2.5">
-                            {dayType !== "past" && rows.length > 0 && (
-                              <div className="flex items-center gap-2 justify-end">
-                                <Clock
-                                  size={12}
-                                  className="text-muted-foreground"
-                                />
-                                <span className="text-xs text-muted-foreground">
-                                  {doneCount}/{rows.length} complete
-                                </span>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    )}
-                  </table>
-                </div>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                </ScrollArea>
               )}
             </div>
 
@@ -1163,186 +1167,173 @@ export default function DailyRoutineTab({
                     All Days Progress (100 Days)
                   </h3>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs border-border text-muted-foreground hover:text-foreground gap-1.5"
-                    onClick={() => {
-                      const newStart = todayKey();
-                      setStartDate(newStart);
-                      setStartDateState(newStart);
-                      toast.success("100-day tracker reset to today");
-                    }}
-                  >
-                    Set Start Date
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 text-xs text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowAllDays((v) => !v)}
-                  >
-                    {showAllDays ? "Hide" : "Show"}
-                  </Button>
-                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs border-border text-muted-foreground hover:text-foreground gap-1.5"
+                  onClick={() => {
+                    const newStart = todayKey();
+                    setStartDate(newStart);
+                    setStartDateState(newStart);
+                    toast.success("100-day tracker reset to today");
+                  }}
+                >
+                  Set Start Date
+                </Button>
               </div>
-              {showAllDays && (
-                <ScrollArea className="max-h-72">
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-sm">
-                      <thead>
-                        <tr className="bg-card/80 sticky top-0">
-                          <th className="px-3 py-2 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-12">
-                            Day
-                          </th>
-                          <th className="px-3 py-2 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                            Date
-                          </th>
-                          <th className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-16">
-                            Sched
-                          </th>
-                          <th className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-14">
-                            Done
-                          </th>
-                          <th className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-20">
-                            Progress
-                          </th>
-                          <th className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-14">
-                            Status
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {hundredDayData.map((entry) => {
-                          const isSelected = entry.dateKey === selectedKey;
-                          return (
-                            <tr
-                              key={entry.dateKey}
-                              onClick={() => {
-                                if (!entry.isFuture) selectDay(entry.dateKey);
-                              }}
-                              onKeyDown={(e) => {
-                                if (
-                                  (e.key === "Enter" || e.key === " ") &&
-                                  !entry.isFuture
-                                ) {
-                                  selectDay(entry.dateKey);
-                                }
-                              }}
-                              tabIndex={entry.isFuture ? -1 : 0}
-                              className={[
-                                "border-t border-border transition-colors cursor-pointer",
-                                entry.isToday
-                                  ? "bg-primary/10 font-semibold"
-                                  : "",
-                                entry.isPast ? "opacity-70" : "",
-                                isSelected
-                                  ? "ring-1 ring-inset ring-primary"
-                                  : "hover:bg-accent/15",
-                              ]
-                                .filter(Boolean)
-                                .join(" ")}
-                            >
-                              <td className="px-3 py-2 text-xs font-mono text-muted-foreground">
-                                <div className="flex items-center gap-1">
-                                  D{entry.dayNum}
-                                  {entry.isPast && (
-                                    <Lock
-                                      size={9}
-                                      className="text-muted-foreground/40"
-                                    />
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-3 py-2 text-xs text-foreground">
-                                {(() => {
-                                  const [y, m, d] = entry.dateKey
-                                    .split("-")
-                                    .map(Number);
-                                  return new Date(
-                                    y,
-                                    m - 1,
-                                    d,
-                                  ).toLocaleDateString("en-IN", {
+              <ScrollArea className="max-h-96">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead className="sticky top-0 z-10">
+                      <tr className="bg-card/95 backdrop-blur-sm">
+                        <th className="px-3 py-2 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-12">
+                          Day
+                        </th>
+                        <th className="px-3 py-2 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                          Date
+                        </th>
+                        <th className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-16">
+                          Sched
+                        </th>
+                        <th className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-14">
+                          Done
+                        </th>
+                        <th className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-20">
+                          Progress
+                        </th>
+                        <th className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-14">
+                          Status
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {hundredDayData.map((entry) => {
+                        const isSelected = entry.dateKey === selectedKey;
+                        return (
+                          <tr
+                            key={entry.dateKey}
+                            onClick={() => {
+                              if (!entry.isFuture) selectDay(entry.dateKey);
+                            }}
+                            onKeyDown={(e) => {
+                              if (
+                                (e.key === "Enter" || e.key === " ") &&
+                                !entry.isFuture
+                              ) {
+                                selectDay(entry.dateKey);
+                              }
+                            }}
+                            tabIndex={entry.isFuture ? -1 : 0}
+                            className={[
+                              "border-t border-border transition-colors cursor-pointer",
+                              entry.isToday
+                                ? "bg-primary/10 font-semibold"
+                                : "",
+                              entry.isPast ? "opacity-70" : "",
+                              isSelected
+                                ? "ring-1 ring-inset ring-primary"
+                                : "hover:bg-accent/15",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                          >
+                            <td className="px-3 py-2 text-xs font-mono text-muted-foreground">
+                              <div className="flex items-center gap-1">
+                                D{entry.dayNum}
+                                {entry.isPast && (
+                                  <Lock
+                                    size={9}
+                                    className="text-muted-foreground/40"
+                                  />
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 text-xs text-foreground">
+                              {(() => {
+                                const [y, m, d] = entry.dateKey
+                                  .split("-")
+                                  .map(Number);
+                                return new Date(y, m - 1, d).toLocaleDateString(
+                                  "en-IN",
+                                  {
                                     day: "numeric",
                                     month: "short",
-                                  });
-                                })()}
-                                {entry.isToday && (
-                                  <span className="ml-1 text-[9px] text-primary font-bold">
-                                    TODAY
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2 text-xs text-center text-muted-foreground font-mono">
-                                {entry.scheduled || <span>{"–"}</span>}
-                              </td>
-                              <td className="px-3 py-2 text-xs text-center font-mono">
-                                {entry.scheduled > 0 ? (
-                                  entry.done
-                                ) : (
-                                  <span>{"–"}</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2 text-xs text-center">
-                                {entry.scheduled > 0 ? (
-                                  <div className="flex items-center gap-1">
-                                    <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                                      <div
-                                        className="h-full bg-primary rounded-full"
-                                        style={{ width: `${entry.pct}%` }}
-                                      />
-                                    </div>
-                                    <span className="text-[9px] font-mono text-primary shrink-0">
-                                      {entry.pct}%
-                                    </span>
+                                  },
+                                );
+                              })()}
+                              {entry.isToday && (
+                                <span className="ml-1 text-[9px] text-primary font-bold">
+                                  TODAY
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-xs text-center text-muted-foreground font-mono">
+                              {entry.scheduled || <span>{"–"}</span>}
+                            </td>
+                            <td className="px-3 py-2 text-xs text-center font-mono">
+                              {entry.scheduled > 0 ? (
+                                entry.done
+                              ) : (
+                                <span>{"–"}</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-xs text-center">
+                              {entry.scheduled > 0 ? (
+                                <div className="flex items-center gap-1">
+                                  <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-primary rounded-full"
+                                      style={{ width: `${entry.pct}%` }}
+                                    />
                                   </div>
-                                ) : (
-                                  <span>{"–"}</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-2 text-center">
-                                {entry.scheduled === 0 ? (
-                                  <span className="text-muted-foreground/40 text-xs">
-                                    {"–"}
+                                  <span className="text-[9px] font-mono text-primary shrink-0">
+                                    {entry.pct}%
                                   </span>
-                                ) : entry.pct === 100 ? (
-                                  <CheckCircle2
-                                    size={14}
-                                    className="text-emerald-400 mx-auto"
-                                  />
-                                ) : entry.isFuture ? (
+                                </div>
+                              ) : (
+                                <span>{"–"}</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {entry.scheduled === 0 ? (
+                                <span className="text-muted-foreground/40 text-xs">
+                                  {"–"}
+                                </span>
+                              ) : entry.pct === 100 ? (
+                                <CheckCircle2
+                                  size={14}
+                                  className="text-emerald-400 mx-auto"
+                                />
+                              ) : entry.isFuture ? (
+                                <Circle
+                                  size={14}
+                                  className="text-muted-foreground/30 mx-auto"
+                                />
+                              ) : (
+                                <div className="flex items-center justify-center gap-0.5">
                                   <Circle
                                     size={14}
-                                    className="text-muted-foreground/30 mx-auto"
+                                    className={
+                                      entry.pct > 0
+                                        ? "text-amber-400"
+                                        : "text-muted-foreground/30"
+                                    }
                                   />
-                                ) : (
-                                  <div className="flex items-center justify-center gap-0.5">
-                                    <Circle
-                                      size={14}
-                                      className={
-                                        entry.pct > 0
-                                          ? "text-amber-400"
-                                          : "text-muted-foreground/30"
-                                      }
-                                    />
-                                    {entry.pct > 0 && (
-                                      <span className="text-[8px] text-amber-400 font-bold">
-                                        {entry.pct}%
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </ScrollArea>
-              )}
+                                  {entry.pct > 0 && (
+                                    <span className="text-[8px] text-amber-400 font-bold">
+                                      {entry.pct}%
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </ScrollArea>
             </div>
           </div>
         </ScrollArea>
