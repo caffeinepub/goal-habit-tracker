@@ -8,6 +8,16 @@
 
 import { IDL } from '@icp-sdk/core/candid';
 
+export const UserRole = IDL.Variant({
+  'admin' : IDL.Null,
+  'user' : IDL.Null,
+  'guest' : IDL.Null,
+});
+export const UserProfile = IDL.Record({ 'name' : IDL.Text });
+export const MonthlyLogEntry = IDL.Record({
+  'date' : IDL.Text,
+  'count' : IDL.Nat,
+});
 export const SubjectQuestionProgress = IDL.Record({
   'subjectName' : IDL.Text,
   'count' : IDL.Nat,
@@ -24,14 +34,29 @@ export const Subject = IDL.Record({
   'description' : IDL.Text,
   'isWeak' : IDL.Bool,
 });
+export const SubjectTarget = IDL.Record({
+  'name' : IDL.Text,
+  'target' : IDL.Nat,
+});
+export const UserTargets = IDL.Record({
+  'dailyStudyHoursTarget' : IDL.Float64,
+  'subjectTargets' : IDL.Vec(SubjectTarget),
+  'planTotalDays' : IDL.Nat,
+  'totalQuestionsGoal' : IDL.Nat,
+});
 
 export const idlService = IDL.Service({
+  '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
   'addMockScore' : IDL.Func([IDL.Nat], [], []),
   'addQuestions' : IDL.Func([IDL.Text, IDL.Nat], [], []),
   'addStudySession' : IDL.Func([IDL.Text, IDL.Float64, IDL.Text], [], []),
   'addSubject' : IDL.Func([IDL.Text, IDL.Text], [], []),
+  'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
   'deleteSubject' : IDL.Func([IDL.Nat], [], []),
+  'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
+  'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
   'getMockScores' : IDL.Func([], [IDL.Vec(IDL.Nat)], ['query']),
+  'getMonthlyLogs' : IDL.Func([], [IDL.Vec(MonthlyLogEntry)], ['query']),
   'getQuestionProgress' : IDL.Func(
       [],
       [IDL.Vec(SubjectQuestionProgress)],
@@ -39,12 +64,35 @@ export const idlService = IDL.Service({
     ),
   'getStudySessions' : IDL.Func([], [IDL.Vec(StudySession)], ['query']),
   'getSubjects' : IDL.Func([], [IDL.Vec(Subject)], ['query']),
+  'getTargets' : IDL.Func([], [UserTargets], ['query']),
+  'getUserProfile' : IDL.Func(
+      [IDL.Principal],
+      [IDL.Opt(UserProfile)],
+      ['query'],
+    ),
+  'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+  'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+  'saveMonthlyLog' : IDL.Func([IDL.Text, IDL.Nat], [], []),
+  'setQuestionCount' : IDL.Func([IDL.Text, IDL.Nat], [], []),
+  'setStudySession' : IDL.Func([IDL.Text, IDL.Float64, IDL.Text], [], []),
+  'setTargets' : IDL.Func(
+      [IDL.Nat, IDL.Float64, IDL.Vec(SubjectTarget), IDL.Nat],
+      [],
+      [],
+    ),
   'toggleDay' : IDL.Func([IDL.Nat, IDL.Nat], [], []),
 });
 
 export const idlInitArgs = [];
 
 export const idlFactory = ({ IDL }) => {
+  const UserRole = IDL.Variant({
+    'admin' : IDL.Null,
+    'user' : IDL.Null,
+    'guest' : IDL.Null,
+  });
+  const UserProfile = IDL.Record({ 'name' : IDL.Text });
+  const MonthlyLogEntry = IDL.Record({ 'date' : IDL.Text, 'count' : IDL.Nat });
   const SubjectQuestionProgress = IDL.Record({
     'subjectName' : IDL.Text,
     'count' : IDL.Nat,
@@ -61,14 +109,26 @@ export const idlFactory = ({ IDL }) => {
     'description' : IDL.Text,
     'isWeak' : IDL.Bool,
   });
+  const SubjectTarget = IDL.Record({ 'name' : IDL.Text, 'target' : IDL.Nat });
+  const UserTargets = IDL.Record({
+    'dailyStudyHoursTarget' : IDL.Float64,
+    'subjectTargets' : IDL.Vec(SubjectTarget),
+    'planTotalDays' : IDL.Nat,
+    'totalQuestionsGoal' : IDL.Nat,
+  });
   
   return IDL.Service({
+    '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
     'addMockScore' : IDL.Func([IDL.Nat], [], []),
     'addQuestions' : IDL.Func([IDL.Text, IDL.Nat], [], []),
     'addStudySession' : IDL.Func([IDL.Text, IDL.Float64, IDL.Text], [], []),
     'addSubject' : IDL.Func([IDL.Text, IDL.Text], [], []),
+    'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
     'deleteSubject' : IDL.Func([IDL.Nat], [], []),
+    'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
+    'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
     'getMockScores' : IDL.Func([], [IDL.Vec(IDL.Nat)], ['query']),
+    'getMonthlyLogs' : IDL.Func([], [IDL.Vec(MonthlyLogEntry)], ['query']),
     'getQuestionProgress' : IDL.Func(
         [],
         [IDL.Vec(SubjectQuestionProgress)],
@@ -76,6 +136,22 @@ export const idlFactory = ({ IDL }) => {
       ),
     'getStudySessions' : IDL.Func([], [IDL.Vec(StudySession)], ['query']),
     'getSubjects' : IDL.Func([], [IDL.Vec(Subject)], ['query']),
+    'getTargets' : IDL.Func([], [UserTargets], ['query']),
+    'getUserProfile' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Opt(UserProfile)],
+        ['query'],
+      ),
+    'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
+    'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+    'saveMonthlyLog' : IDL.Func([IDL.Text, IDL.Nat], [], []),
+    'setQuestionCount' : IDL.Func([IDL.Text, IDL.Nat], [], []),
+    'setStudySession' : IDL.Func([IDL.Text, IDL.Float64, IDL.Text], [], []),
+    'setTargets' : IDL.Func(
+        [IDL.Nat, IDL.Float64, IDL.Vec(SubjectTarget), IDL.Nat],
+        [],
+        [],
+      ),
     'toggleDay' : IDL.Func([IDL.Nat, IDL.Nat], [], []),
   });
 };

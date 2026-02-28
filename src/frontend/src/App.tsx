@@ -5,10 +5,12 @@ import AddSubjectTab from "./components/AddSubjectTab";
 import AnalyticsTab from "./components/AnalyticsTab";
 import FloatingTimerWidget from "./components/FloatingTimerWidget";
 import HomeTab from "./components/HomeTab";
+import LoginGate from "./components/LoginGate";
 import QuestionsTab from "./components/QuestionsTab";
 import Sidebar from "./components/Sidebar";
 import StudyPlanTab from "./components/StudyPlanTab";
 import TimerTab from "./components/TimerTab";
+import { useInternetIdentity } from "./hooks/useInternetIdentity";
 import { useGetMockScores, useGetSubjects } from "./hooks/useQueries";
 
 export type TabId =
@@ -39,6 +41,7 @@ const SESSION_TIPS = [
 ];
 
 export default function App() {
+  const { identity, isInitializing } = useInternetIdentity();
   const [activeTab, setActiveTab] = useState<TabId>("home");
   const [search, setSearch] = useState("");
 
@@ -175,6 +178,25 @@ export default function App() {
   );
 
   const tipIndex = timerSessions % SESSION_TIPS.length;
+
+  // Show login gate if not authenticated
+  if (isInitializing || !identity) {
+    return (
+      <>
+        <LoginGate />
+        <Toaster
+          theme="dark"
+          toastOptions={{
+            style: {
+              background: "oklch(0.13 0.01 20)",
+              border: "1px solid oklch(0.25 0.015 20)",
+              color: "oklch(0.93 0.01 60)",
+            },
+          }}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen flex bg-background text-foreground">

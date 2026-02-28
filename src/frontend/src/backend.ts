@@ -89,14 +89,21 @@ export class ExternalBlob {
         return this;
     }
 }
+export interface UserProfile {
+    name: string;
+}
+export interface MonthlyLogEntry {
+    date: string;
+    count: bigint;
+}
+export interface SubjectTarget {
+    name: string;
+    target: bigint;
+}
 export interface StudySession {
     hours: number;
     subjectName: string;
     date: string;
-}
-export interface SubjectQuestionProgress {
-    subjectName: string;
-    count: bigint;
 }
 export interface Subject {
     id: bigint;
@@ -105,20 +112,63 @@ export interface Subject {
     description: string;
     isWeak: boolean;
 }
+export interface SubjectQuestionProgress {
+    subjectName: string;
+    count: bigint;
+}
+export interface UserTargets {
+    dailyStudyHoursTarget: number;
+    subjectTargets: Array<SubjectTarget>;
+    planTotalDays: bigint;
+    totalQuestionsGoal: bigint;
+}
+export enum UserRole {
+    admin = "admin",
+    user = "user",
+    guest = "guest"
+}
 export interface backendInterface {
+    _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
     addMockScore(score: bigint): Promise<void>;
     addQuestions(subjectName: string, count: bigint): Promise<void>;
     addStudySession(subjectName: string, hours: number, date: string): Promise<void>;
     addSubject(name: string, description: string): Promise<void>;
+    assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
     deleteSubject(subjectId: bigint): Promise<void>;
+    getCallerUserProfile(): Promise<UserProfile | null>;
+    getCallerUserRole(): Promise<UserRole>;
     getMockScores(): Promise<Array<bigint>>;
+    getMonthlyLogs(): Promise<Array<MonthlyLogEntry>>;
     getQuestionProgress(): Promise<Array<SubjectQuestionProgress>>;
     getStudySessions(): Promise<Array<StudySession>>;
     getSubjects(): Promise<Array<Subject>>;
+    getTargets(): Promise<UserTargets>;
+    getUserProfile(user: Principal): Promise<UserProfile | null>;
+    isCallerAdmin(): Promise<boolean>;
+    saveCallerUserProfile(profile: UserProfile): Promise<void>;
+    saveMonthlyLog(date: string, count: bigint): Promise<void>;
+    setQuestionCount(subjectName: string, count: bigint): Promise<void>;
+    setStudySession(subjectName: string, hours: number, date: string): Promise<void>;
+    setTargets(totalQuestionsGoal: bigint, dailyStudyHoursTarget: number, subjectTargets: Array<SubjectTarget>, planTotalDays: bigint): Promise<void>;
     toggleDay(subjectId: bigint, dayIndex: bigint): Promise<void>;
 }
+import type { UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
+    async _initializeAccessControlWithSecret(arg0: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor._initializeAccessControlWithSecret(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor._initializeAccessControlWithSecret(arg0);
+            return result;
+        }
+    }
     async addMockScore(arg0: bigint): Promise<void> {
         if (this.processError) {
             try {
@@ -175,6 +225,20 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async assignCallerUserRole(arg0: Principal, arg1: UserRole): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n1(this._uploadFile, this._downloadFile, arg1));
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n1(this._uploadFile, this._downloadFile, arg1));
+            return result;
+        }
+    }
     async deleteSubject(arg0: bigint): Promise<void> {
         if (this.processError) {
             try {
@@ -189,6 +253,34 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async getCallerUserProfile(): Promise<UserProfile | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCallerUserProfile();
+                return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCallerUserProfile();
+            return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getCallerUserRole(): Promise<UserRole> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCallerUserRole();
+                return from_candid_UserRole_n4(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCallerUserRole();
+            return from_candid_UserRole_n4(this._uploadFile, this._downloadFile, result);
+        }
+    }
     async getMockScores(): Promise<Array<bigint>> {
         if (this.processError) {
             try {
@@ -200,6 +292,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.getMockScores();
+            return result;
+        }
+    }
+    async getMonthlyLogs(): Promise<Array<MonthlyLogEntry>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getMonthlyLogs();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getMonthlyLogs();
             return result;
         }
     }
@@ -245,6 +351,118 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async getTargets(): Promise<UserTargets> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getTargets();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getTargets();
+            return result;
+        }
+    }
+    async getUserProfile(arg0: Principal): Promise<UserProfile | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getUserProfile(arg0);
+                return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getUserProfile(arg0);
+            return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async isCallerAdmin(): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.isCallerAdmin();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.isCallerAdmin();
+            return result;
+        }
+    }
+    async saveCallerUserProfile(arg0: UserProfile): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.saveCallerUserProfile(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.saveCallerUserProfile(arg0);
+            return result;
+        }
+    }
+    async saveMonthlyLog(arg0: string, arg1: bigint): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.saveMonthlyLog(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.saveMonthlyLog(arg0, arg1);
+            return result;
+        }
+    }
+    async setQuestionCount(arg0: string, arg1: bigint): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setQuestionCount(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setQuestionCount(arg0, arg1);
+            return result;
+        }
+    }
+    async setStudySession(arg0: string, arg1: number, arg2: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setStudySession(arg0, arg1, arg2);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setStudySession(arg0, arg1, arg2);
+            return result;
+        }
+    }
+    async setTargets(arg0: bigint, arg1: number, arg2: Array<SubjectTarget>, arg3: bigint): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setTargets(arg0, arg1, arg2, arg3);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setTargets(arg0, arg1, arg2, arg3);
+            return result;
+        }
+    }
     async toggleDay(arg0: bigint, arg1: bigint): Promise<void> {
         if (this.processError) {
             try {
@@ -259,6 +477,39 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+}
+function from_candid_UserRole_n4(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
+    return from_candid_variant_n5(_uploadFile, _downloadFile, value);
+}
+function from_candid_opt_n3(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_variant_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    admin: null;
+} | {
+    user: null;
+} | {
+    guest: null;
+}): UserRole {
+    return "admin" in value ? UserRole.admin : "user" in value ? UserRole.user : "guest" in value ? UserRole.guest : value;
+}
+function to_candid_UserRole_n1(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): _UserRole {
+    return to_candid_variant_n2(_uploadFile, _downloadFile, value);
+}
+function to_candid_variant_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): {
+    admin: null;
+} | {
+    user: null;
+} | {
+    guest: null;
+} {
+    return value == UserRole.admin ? {
+        admin: null
+    } : value == UserRole.user ? {
+        user: null
+    } : value == UserRole.guest ? {
+        guest: null
+    } : value;
 }
 export interface CreateActorOptions {
     agent?: Agent;

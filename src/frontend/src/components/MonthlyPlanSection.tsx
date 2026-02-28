@@ -1,5 +1,4 @@
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,32 +17,21 @@ import {
   CheckCircle2,
   Clock,
   Flame,
-  Lock,
   Target,
   TrendingUp,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import type { MonthlyLogEntry } from "../backend.d";
+import {
+  useGetMonthlyLogs,
+  useGetTargets,
+  useSaveMonthlyLog,
+} from "../hooks/useQueries";
+import TargetsPanel from "./TargetsPanel";
 
-const TOTAL_GOAL = 9000;
-const TOTAL_DAYS = 30;
-const DAILY_TARGET = 300; // 9000 / 30
-
-// Subject daily targets
-const SUBJECT_DAILY = [
-  { name: "Maths", daily: 67, total: 2000 },
-  { name: "English", daily: 67, total: 2000 },
-  { name: "Reasoning", daily: 67, total: 2000 },
-  { name: "General Knowledge", daily: 50, total: 1500 },
-  { name: "Current Affairs", daily: 33, total: 1000 },
-  { name: "Computer", daily: 17, total: 500 },
-];
-
-function isPastNoon() {
-  // Today is always editable for the full 24 hours
-  return false;
-}
+type SaveStatus = "idle" | "saving" | "saved";
 
 function getTodayKey(): string {
   const d = new Date();
@@ -62,7 +50,7 @@ function getDateKey(planStart: Date, dayIndex: number): string {
   return `${y}-${m}-${day}`;
 }
 
-function getDaysElapsed(planStart: Date): number {
+function getDaysElapsed(planStart: Date, totalDays: number): number {
   const now = new Date();
   const startOfToday = new Date(
     now.getFullYear(),
@@ -75,26 +63,28 @@ function getDaysElapsed(planStart: Date): number {
     planStart.getDate(),
   );
   const diff = startOfToday.getTime() - startDate.getTime();
-  return Math.max(0, Math.min(TOTAL_DAYS, Math.floor(diff / 86400000)));
+  return Math.max(0, Math.min(totalDays, Math.floor(diff / 86400000)));
 }
 
 function getPaceMessage(
-  _totalSolved: number,
   daysElapsed: number,
   totalSoFar: number,
+  totalGoal: number,
+  totalDays: number,
+  dailyTarget: number,
 ): string {
-  const remaining = TOTAL_GOAL - totalSoFar;
-  const daysLeft = TOTAL_DAYS - daysElapsed;
+  const remaining = totalGoal - totalSoFar;
+  const daysLeft = totalDays - daysElapsed;
   if (daysLeft <= 0) {
-    if (totalSoFar >= TOTAL_GOAL)
+    if (totalSoFar >= totalGoal)
       return "🏆 Challenge complete! Incredible work!";
-    return `Plan ended — ${totalSoFar.toLocaleString()}/${TOTAL_GOAL.toLocaleString()} questions done.`;
+    return `Plan ended — ${totalSoFar.toLocaleString()}/${totalGoal.toLocaleString()} questions done.`;
   }
   if (remaining <= 0) return "🏆 Goal achieved ahead of schedule!";
   const requiredPerDay = Math.ceil(remaining / daysLeft);
-  if (requiredPerDay <= DAILY_TARGET)
+  if (requiredPerDay <= dailyTarget)
     return `You need ${requiredPerDay}/day for ${daysLeft} remaining days — you're on track! ✅`;
-  return `You need ${requiredPerDay}/day for ${daysLeft} remaining days to hit 9000 — step it up! ⚡`;
+  return `You need ${requiredPerDay}/day for ${daysLeft} remaining days to hit ${totalGoal.toLocaleString()} — step it up! ⚡`;
 }
 
 type DayStatus = "complete" | "partial" | "missed" | "today" | "future";
@@ -103,10 +93,11 @@ function getDayStatus(
   count: number,
   isPast: boolean,
   isToday: boolean,
+  dailyTarget: number,
 ): DayStatus {
   if (isToday) return "today";
   if (!isPast && !isToday) return "future";
-  if (count >= DAILY_TARGET) return "complete";
+  if (count >= dailyTarget) return "complete";
   if (count > 0) return "partial";
   return "missed";
 }
@@ -120,23 +111,43 @@ const DAY_STATUS_STYLES: Record<DayStatus, string> = {
 };
 
 export default function MonthlyPlanSection() {
-  const [logs, setLogs] = useState<Record<string, number>>({});
+  const { data: rawLogs = [], isLoading: logsLoading } = useGetMonthlyLogs();
+  const { data: targets } = useGetTargets();
+  const saveMonthlyLog = useSaveMonthlyLog();
+
+  const TOTAL_GOAL = Number(targets?.totalQuestionsGoal ?? 9000);
+  const TOTAL_DAYS = Number(targets?.planTotalDays ?? 30);
+  const DAILY_TARGET =
+    TOTAL_DAYS > 0 ? Math.round(TOTAL_GOAL / TOTAL_DAYS) : 300;
+
+  // Build subject daily targets from backend targets
+  const SUBJECT_DAILY = useMemo(() => {
+    const subjectTargets = targets?.subjectTargets ?? [];
+    return subjectTargets.map((s) => ({
+      name: s.name,
+      total: Number(s.target),
+      daily: TOTAL_DAYS > 0 ? Math.round(Number(s.target) / TOTAL_DAYS) : 0,
+    }));
+  }, [targets?.subjectTargets, TOTAL_DAYS]);
+
   const [planStart, setPlanStart] = useState<Date | null>(null);
   const [inputValue, setInputValue] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const locked = isPastNoon();
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputInitialized = useRef(false);
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    const savedLogs = localStorage.getItem("ssc_monthly_plan");
-    if (savedLogs) {
-      try {
-        setLogs(JSON.parse(savedLogs));
-      } catch {
-        setLogs({});
-      }
+  // Build logs map from backend data
+  const logs = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const entry of rawLogs as MonthlyLogEntry[]) {
+      map[entry.date] = Number(entry.count);
     }
+    return map;
+  }, [rawLogs]);
 
+  // Load/save plan start from localStorage
+  useEffect(() => {
     const savedStart = localStorage.getItem("ssc_plan_start");
     if (savedStart) {
       setPlanStart(new Date(savedStart));
@@ -149,29 +160,71 @@ export default function MonthlyPlanSection() {
   }, []);
 
   const todayKey = getTodayKey();
-  const daysElapsed = planStart ? getDaysElapsed(planStart) : 0;
+  const daysElapsed = planStart ? getDaysElapsed(planStart, TOTAL_DAYS) : 0;
   const daysRemaining = Math.max(0, TOTAL_DAYS - daysElapsed);
 
   const todaySolved = logs[todayKey] ?? 0;
   const totalSoFar = Object.values(logs).reduce((a, b) => a + b, 0);
 
-  const handleLogToday = (e: React.FormEvent) => {
-    e.preventDefault();
-    const n = Number.parseInt(inputValue, 10);
-    if (Number.isNaN(n) || n < 1 || n > 500) {
-      toast.error("Enter a valid number between 1 and 500");
-      return;
+  // Pre-populate input with today's backend value once loaded
+  useEffect(() => {
+    if (!logsLoading && !inputInitialized.current) {
+      const todayCount = logs[todayKey] ?? 0;
+      if (todayCount > 0) {
+        setInputValue(String(todayCount));
+      }
+      inputInitialized.current = true;
     }
-    setIsSubmitting(true);
-    const newLogs = { ...logs, [todayKey]: (logs[todayKey] ?? 0) + n };
-    setLogs(newLogs);
-    localStorage.setItem("ssc_monthly_plan", JSON.stringify(newLogs));
-    setInputValue("");
-    setTimeout(() => {
-      setIsSubmitting(false);
-      toast.success(`Logged ${n} questions for today! Keep going! 🔥`);
-    }, 400);
-  };
+  }, [logsLoading, logs, todayKey]);
+
+  const triggerSave = useCallback(
+    (valueStr: string) => {
+      const n = Number.parseInt(valueStr, 10);
+      if (Number.isNaN(n) || n < 0 || n > 99999) return;
+
+      setSaveStatus("saving");
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+
+      saveMonthlyLog.mutate(
+        { date: todayKey, count: n },
+        {
+          onSuccess: () => {
+            setSaveStatus("saved");
+            savedTimerRef.current = setTimeout(
+              () => setSaveStatus("idle"),
+              3000,
+            );
+          },
+          onError: () => {
+            setSaveStatus("idle");
+            toast.error("Failed to save");
+          },
+        },
+      );
+    },
+    [saveMonthlyLog, todayKey],
+  );
+
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      setInputValue(val);
+
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        triggerSave(val);
+      }, 600);
+    },
+    [triggerSave],
+  );
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
+  }, []);
 
   // Build weekly breakdown
   const weeks: { label: string; startDay: number; endDay: number }[] = [];
@@ -197,16 +250,22 @@ export default function MonthlyPlanSection() {
     return { target, solved, days };
   };
 
-  const paceMessage = getPaceMessage(todaySolved, daysElapsed, totalSoFar);
+  const paceMessage = getPaceMessage(
+    daysElapsed,
+    totalSoFar,
+    TOTAL_GOAL,
+    TOTAL_DAYS,
+    DAILY_TARGET,
+  );
 
-  // Build 30 day cells
+  // Build day cells (TOTAL_DAYS count)
   const dayCells = planStart
     ? Array.from({ length: TOTAL_DAYS }, (_, i) => {
         const dayKey = getDateKey(planStart, i);
         const count = logs[dayKey] ?? 0;
         const isPast = i < daysElapsed;
         const isToday = dayKey === todayKey;
-        const status = getDayStatus(count, isPast, isToday);
+        const status = getDayStatus(count, isPast, isToday, DAILY_TARGET);
         return { dayNum: i + 1, key: dayKey, count, status };
       })
     : [];
@@ -220,18 +279,19 @@ export default function MonthlyPlanSection() {
     >
       {/* Section Header */}
       <div className="flex items-center gap-3 mb-5">
-        <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
+        <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
           <CalendarDays size={16} className="text-primary" />
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <h2 className="font-display text-xl font-bold text-foreground">
-            30-Day 9000 Questions Plan
+            {TOTAL_DAYS}-Day {TOTAL_GOAL.toLocaleString()} Questions Plan
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            300 questions/day · Track your daily progress toward the ultimate
-            goal
+            {DAILY_TARGET} questions/day · Track your daily progress toward the
+            ultimate goal
           </p>
         </div>
+        <TargetsPanel />
       </div>
 
       {/* Summary Stats Row */}
@@ -266,14 +326,14 @@ export default function MonthlyPlanSection() {
             label: "Total So Far",
             value: totalSoFar.toLocaleString(),
             icon: <TrendingUp size={14} className="text-emerald-400" />,
-            sub: `${Math.round((totalSoFar / TOTAL_GOAL) * 100)}% of 9000`,
+            sub: `${Math.round((totalSoFar / TOTAL_GOAL) * 100)}% of ${TOTAL_GOAL.toLocaleString()}`,
             highlight: false,
           },
           {
             label: "Days Remaining",
             value: daysRemaining.toString(),
             icon: <CalendarDays size={14} className="text-blue-400" />,
-            sub: `Day ${Math.min(daysElapsed + 1, 30)} of 30`,
+            sub: `Day ${Math.min(daysElapsed + 1, TOTAL_DAYS)} of ${TOTAL_DAYS}`,
             highlight: false,
           },
         ].map((stat) => (
@@ -314,106 +374,65 @@ export default function MonthlyPlanSection() {
           <CardHeader className="pb-3">
             <CardTitle className="font-display text-base font-semibold flex items-center gap-2">
               <Flame size={15} className="text-amber-400" />
-              Log Today's Questions
-              {locked && (
-                <span className="ml-auto flex items-center gap-1 text-amber-400 text-xs font-normal">
-                  <Lock size={11} />
-                  Locked
-                </span>
-              )}
+              Today's Questions
+              {/* Save status indicator */}
+              <span className="ml-auto">
+                {saveStatus === "saving" && (
+                  <span className="flex items-center gap-1 text-muted-foreground text-xs font-normal">
+                    <span className="animate-spin h-3 w-3 border border-current border-t-transparent rounded-full" />
+                    Saving…
+                  </span>
+                )}
+                {saveStatus === "saved" && (
+                  <span className="flex items-center gap-1 text-emerald-400 text-xs font-normal">
+                    <CheckCircle2 size={12} />
+                    Saved
+                  </span>
+                )}
+              </span>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {locked ? (
-              <motion.div
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex flex-col items-center gap-3 py-6 px-4 rounded-xl border border-amber-500/30 bg-amber-500/5 text-center"
-              >
-                <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center">
-                  <Lock size={18} className="text-amber-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-amber-400">
-                    Editing locked after 12:00 PM
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Today's questions have been recorded. Come back tomorrow to
-                    log more.
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Clock size={11} />
-                  <span>Today solved: {todaySolved} questions</span>
-                </div>
-              </motion.div>
-            ) : (
-              <form onSubmit={handleLogToday} className="space-y-4">
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30 border border-border mb-2">
-                  <Clock size={12} className="text-muted-foreground shrink-0" />
-                  <p className="text-xs text-muted-foreground">
-                    Logging for today:{" "}
-                    <span className="font-semibold text-foreground">
-                      {new Date().toLocaleDateString("en-IN", {
-                        weekday: "short",
-                        day: "numeric",
-                        month: "short",
-                      })}
-                    </span>{" "}
-                    · Editable all day
-                  </p>
-                </div>
+            <div className="space-y-4">
+              {/* Today badge */}
+              <div className="flex items-center gap-2">
+                <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-xs font-medium gap-1.5">
+                  <Clock size={10} />
+                  {new Date().toLocaleDateString("en-IN", {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                  })}{" "}
+                  · Editable all day
+                </Badge>
+              </div>
 
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">
-                    Questions Solved Today
-                  </Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={500}
-                    placeholder="e.g. 150"
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    className="bg-muted/40 border-input focus:border-primary/50 font-mono"
-                  />
-                  <p className="text-[10px] text-muted-foreground">
-                    Today so far:{" "}
-                    <span className="font-mono font-bold text-foreground">
-                      {todaySolved}
-                    </span>{" "}
-                    questions
-                    {todaySolved > 0 && (
-                      <span
-                        className={`ml-1 ${todaySolved >= DAILY_TARGET ? "text-emerald-400" : "text-amber-400"}`}
-                      >
-                        {todaySolved >= DAILY_TARGET
-                          ? "✓ Target met!"
-                          : `(${DAILY_TARGET - todaySolved} more to reach 300)`}
-                      </span>
-                    )}
-                  </p>
-                </div>
-
-                <Button
-                  type="submit"
-                  disabled={isSubmitting || !inputValue}
-                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
-                >
-                  {isSubmitting ? (
-                    <span className="flex items-center gap-2">
-                      <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
-                      Logging...
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+                  Total Questions Solved Today
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="e.g. 150"
+                  value={inputValue}
+                  onChange={handleInputChange}
+                  className="bg-muted/40 border-input focus:border-primary/50 font-mono"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Enter your total for today. Auto-saves as you type.
+                  {todaySolved > 0 && (
+                    <span
+                      className={`ml-1 ${todaySolved >= DAILY_TARGET ? "text-emerald-400" : "text-amber-400"}`}
+                    >
+                      {todaySolved >= DAILY_TARGET
+                        ? "✓ Target met!"
+                        : `(${DAILY_TARGET - todaySolved} more to reach ${DAILY_TARGET})`}
                     </span>
-                  ) : (
-                    <>
-                      <Flame size={14} className="mr-2" />
-                      Log Questions
-                    </>
                   )}
-                </Button>
-              </form>
-            )}
+                </p>
+              </div>
+            </div>
 
             {/* Today's progress bar */}
             <div className="mt-4 space-y-1.5">
@@ -488,7 +507,7 @@ export default function MonthlyPlanSection() {
             <CardContent className="p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-foreground">
-                  30-Day Overall Progress
+                  {TOTAL_DAYS}-Day Overall Progress
                 </span>
                 <Badge
                   variant="outline"
@@ -545,15 +564,15 @@ export default function MonthlyPlanSection() {
           <CardHeader className="pb-3">
             <CardTitle className="font-display text-base font-semibold flex items-center gap-2">
               <CalendarDays size={15} className="text-primary" />
-              30-Day Calendar
+              {TOTAL_DAYS}-Day Calendar
               <div className="flex items-center gap-3 ml-auto text-[10px] text-muted-foreground font-normal">
                 <span className="flex items-center gap-1">
                   <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500/40 border border-emerald-500/50 inline-block" />
-                  ≥300
+                  ≥{DAILY_TARGET}
                 </span>
                 <span className="flex items-center gap-1">
                   <span className="w-2.5 h-2.5 rounded-sm bg-amber-500/30 border border-amber-500/50 inline-block" />
-                  1–299
+                  1–{DAILY_TARGET - 1}
                 </span>
                 <span className="flex items-center gap-1">
                   <span className="w-2.5 h-2.5 rounded-sm bg-destructive/20 border border-destructive/30 inline-block" />

@@ -1,5 +1,4 @@
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +17,6 @@ import {
   CheckCircle2,
   Clock,
   Flame,
-  Lock,
   PlusCircle,
   Star,
   Target,
@@ -26,75 +24,59 @@ import {
   Zap,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { SubjectQuestionProgress } from "../backend.d";
-import { useAddQuestions, useGetQuestionProgress } from "../hooks/useQueries";
+import {
+  useGetQuestionProgress,
+  useGetTargets,
+  useSetQuestionCount,
+} from "../hooks/useQueries";
 import MonthlyPlanSection from "./MonthlyPlanSection";
+import TargetsPanel from "./TargetsPanel";
 
-const TOTAL_GOAL = 9000;
-
-const SUBJECT_TARGETS: {
-  name: string;
-  target: number;
-  color: string;
-  icon: React.ReactNode;
-}[] = [
-  {
-    name: "Maths",
-    target: 2000,
+const SUBJECT_DISPLAY: Record<
+  string,
+  { color: string; icon: React.ReactNode }
+> = {
+  Maths: {
     color: "text-primary bg-primary/10 border-primary/30",
     icon: <Target size={14} />,
   },
-  {
-    name: "English",
-    target: 2000,
+  English: {
     color: "text-blue-400 bg-blue-500/10 border-blue-500/30",
     icon: <BookOpen size={14} />,
   },
-  {
-    name: "Reasoning",
-    target: 2000,
+  Reasoning: {
     color: "text-purple-400 bg-purple-500/10 border-purple-500/30",
     icon: <Zap size={14} />,
   },
-  {
-    name: "General Knowledge",
-    target: 1500,
+  "General Knowledge": {
     color: "text-amber-400 bg-amber-500/10 border-amber-500/30",
     icon: <Star size={14} />,
   },
-  {
-    name: "Current Affairs",
-    target: 1000,
+  "Current Affairs": {
     color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
     icon: <Flame size={14} />,
   },
-  {
-    name: "Computer",
-    target: 500,
+  Computer: {
     color: "text-cyan-400 bg-cyan-500/10 border-cyan-500/30",
     icon: <CheckCircle2 size={14} />,
   },
+};
+
+const MILESTONE_LABELS = [
+  { pct: 0.11, label: "1K Hustler", icon: <Flame size={14} /> },
+  { pct: 0.28, label: "2.5K Warrior", icon: <Zap size={14} /> },
+  { pct: 0.56, label: "Champion", icon: <Award size={14} /> },
+  { pct: 0.83, label: "Legend", icon: <Star size={14} /> },
+  { pct: 1.0, label: "Master", icon: <Trophy size={14} /> },
 ];
 
-const MILESTONES = [
-  { count: 1000, label: "1K Hustler", icon: <Flame size={14} /> },
-  { count: 2500, label: "2.5K Warrior", icon: <Zap size={14} /> },
-  { count: 5000, label: "5K Champion", icon: <Award size={14} /> },
-  { count: 7500, label: "7.5K Legend", icon: <Star size={14} /> },
-  { count: 9000, label: "9K Master", icon: <Trophy size={14} /> },
-];
-
-function isPastNoon() {
-  // Today is always editable for the full 24 hours
-  return false;
-}
-
-function getMotivationalMessage(total: number): string {
-  const pct = (total / TOTAL_GOAL) * 100;
+function getMotivationalMessage(total: number, goal: number): string {
+  const pct = (total / goal) * 100;
   if (pct === 0)
-    return "Begin your 9000 questions journey today. Every question counts!";
+    return `Begin your ${goal.toLocaleString()} questions journey today. Every question counts!`;
   if (pct < 10)
     return "Great start! The first step is always the hardest. Keep going!";
   if (pct < 25) return "You're building momentum! Stay consistent every day.";
@@ -105,8 +87,9 @@ function getMotivationalMessage(total: number): string {
   if (pct < 75)
     return "More than halfway done! The finish line is visible now.";
   if (pct < 90) return "Almost there! Final push — don't slow down now!";
-  if (pct < 100) return "So close to 9000! Give it everything you have!";
-  return "🏆 All 9000 questions completed! You're ready to crack SSC CGL!";
+  if (pct < 100)
+    return `So close to ${goal.toLocaleString()}! Give it everything you have!`;
+  return `🏆 All ${goal.toLocaleString()} questions completed! You're ready to crack SSC CGL!`;
 }
 
 interface CircularProgressBigProps {
@@ -175,13 +158,42 @@ function CircularProgressBig({ total, goal }: CircularProgressBigProps) {
   );
 }
 
+type SaveStatus = "idle" | "saving" | "saved";
+
 export default function QuestionsTab() {
   const { data: rawProgress = [], isLoading } = useGetQuestionProgress();
-  const addQuestions = useAddQuestions();
+  const { data: targets } = useGetTargets();
+  const setQuestionCount = useSetQuestionCount();
+
+  const TOTAL_GOAL = Number(targets?.totalQuestionsGoal ?? 9000);
+
+  // Build subject targets list dynamically from backend targets
+  const SUBJECT_TARGETS = useMemo(() => {
+    const subjectTargets = targets?.subjectTargets ?? [];
+    return subjectTargets.map((s) => ({
+      name: s.name,
+      target: Number(s.target),
+      ...(SUBJECT_DISPLAY[s.name] ?? {
+        color: "text-foreground bg-muted/20 border-border",
+        icon: <Target size={14} />,
+      }),
+    }));
+  }, [targets?.subjectTargets]);
+
+  // Build milestones dynamically from total goal
+  const MILESTONES = useMemo(() => {
+    return MILESTONE_LABELS.map((m) => ({
+      count: Math.round(TOTAL_GOAL * m.pct),
+      label: m.label,
+      icon: m.icon,
+    }));
+  }, [TOTAL_GOAL]);
 
   const [subject, setSubject] = useState("");
   const [countInput, setCountInput] = useState("");
-  const locked = isPastNoon();
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Build a map from backend data
   const progressMap: Record<string, number> = {};
@@ -189,31 +201,76 @@ export default function QuestionsTab() {
     progressMap[p.subjectName] = Number(p.count);
   }
 
+  // Stable ref to access progressMap in callbacks without dep churn
+  const progressMapRef = useRef(progressMap);
+  progressMapRef.current = progressMap;
+
   const totalSolved = Object.values(progressMap).reduce((a, b) => a + b, 0);
   const totalPct = Math.min((totalSolved / TOTAL_GOAL) * 100, 100);
 
-  const handleAdd = (e: React.FormEvent) => {
-    e.preventDefault();
-    const n = Number.parseInt(countInput, 10);
-    if (!subject) {
-      toast.error("Select a subject");
-      return;
-    }
-    if (Number.isNaN(n) || n <= 0 || n > 1000) {
-      toast.error("Enter valid count (1 – 1000)");
-      return;
-    }
-    addQuestions.mutate(
-      { subjectName: subject, count: n },
-      {
-        onSuccess: () => {
-          toast.success(`Added ${n} questions for ${subject}`);
-          setCountInput("");
+  const triggerSave = useCallback(
+    (subj: string, countStr: string) => {
+      const n = Number.parseInt(countStr, 10);
+      if (!subj || Number.isNaN(n) || n < 0 || n > 99999) return;
+
+      setSaveStatus("saving");
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+
+      setQuestionCount.mutate(
+        { subjectName: subj, count: n },
+        {
+          onSuccess: () => {
+            setSaveStatus("saved");
+            savedTimerRef.current = setTimeout(
+              () => setSaveStatus("idle"),
+              3000,
+            );
+          },
+          onError: () => {
+            setSaveStatus("idle");
+            toast.error("Failed to save questions");
+          },
         },
-        onError: () => toast.error("Failed to log questions"),
-      },
-    );
-  };
+      );
+    },
+    [setQuestionCount],
+  );
+
+  const handleSubjectChange = useCallback(
+    (val: string) => {
+      setSubject(val);
+      // Pre-populate with current known count
+      const currentCount = progressMapRef.current[val] ?? 0;
+      const newCountStr = String(currentCount);
+      setCountInput(newCountStr);
+      // Immediately trigger save if there's a valid count
+      if (currentCount > 0) {
+        triggerSave(val, newCountStr);
+      }
+    },
+    [triggerSave],
+  );
+
+  const handleCountChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      setCountInput(val);
+
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        if (subject) triggerSave(subject, val);
+      }, 600);
+    },
+    [subject, triggerSave],
+  );
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
+  }, []);
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -228,11 +285,15 @@ export default function QuestionsTab() {
             <Trophy size={16} className="text-primary" />
           </div>
           <h2 className="font-display text-2xl font-bold text-foreground">
-            9000 Questions Challenge
+            {TOTAL_GOAL.toLocaleString()} Questions Challenge
           </h2>
+          <div className="ml-auto">
+            <TargetsPanel />
+          </div>
         </div>
         <p className="text-sm text-muted-foreground ml-11">
-          Solve 9000 targeted questions across all SSC CGL subjects
+          Solve {TOTAL_GOAL.toLocaleString()} targeted questions across all SSC
+          CGL subjects
         </p>
       </motion.div>
 
@@ -273,7 +334,7 @@ export default function QuestionsTab() {
                 {/* Motivational message */}
                 <div className="p-3 rounded-lg bg-muted/40 border border-border mb-4">
                   <p className="text-sm text-foreground/90 leading-relaxed">
-                    {getMotivationalMessage(totalSolved)}
+                    {getMotivationalMessage(totalSolved, TOTAL_GOAL)}
                   </p>
                 </div>
 
@@ -374,121 +435,75 @@ export default function QuestionsTab() {
             <CardHeader className="pb-3">
               <CardTitle className="font-display text-base font-semibold flex items-center gap-2">
                 <PlusCircle size={16} className="text-primary" />
-                Log Questions Solved
-                {locked && (
-                  <span className="ml-auto flex items-center gap-1 text-amber-400 text-xs font-normal">
-                    <Lock size={11} />
-                    Locked
-                  </span>
-                )}
+                Set Question Total
+                {/* Save status indicator */}
+                <span className="ml-auto">
+                  {saveStatus === "saving" && (
+                    <span className="flex items-center gap-1 text-muted-foreground text-xs font-normal">
+                      <span className="animate-spin h-3 w-3 border border-current border-t-transparent rounded-full" />
+                      Saving…
+                    </span>
+                  )}
+                  {saveStatus === "saved" && (
+                    <span className="flex items-center gap-1 text-emerald-400 text-xs font-normal">
+                      <CheckCircle2 size={12} />
+                      Saved
+                    </span>
+                  )}
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {locked ? (
-                <motion.div
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex flex-col items-center gap-3 py-6 px-4 rounded-xl border border-amber-500/30 bg-amber-500/5 text-center"
-                >
-                  <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center">
-                    <Lock size={18} className="text-amber-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-amber-400">
-                      Editing locked after 12:00 PM
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Today's questions have been recorded. Come back tomorrow
-                      to log more.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Clock size={11} />
-                    <span>Total solved: {totalSolved.toLocaleString()}</span>
-                  </div>
-                </motion.div>
-              ) : (
-                <form onSubmit={handleAdd} className="space-y-4">
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30 border border-border mb-2">
-                    <Clock
-                      size={12}
-                      className="text-muted-foreground shrink-0"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Logging for today:{" "}
-                      <span className="font-semibold text-foreground">
-                        {new Date().toLocaleDateString("en-IN", {
-                          weekday: "short",
-                          day: "numeric",
-                          month: "short",
-                        })}
-                      </span>{" "}
-                      · Editable all day
-                    </p>
-                  </div>
+              <div className="space-y-4">
+                {/* Today badge */}
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-xs font-medium gap-1.5">
+                    <Clock size={10} />
+                    {new Date().toLocaleDateString("en-IN", {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "short",
+                    })}{" "}
+                    · Editable all day
+                  </Badge>
+                </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">
-                      Subject
-                    </Label>
-                    <Select
-                      value={subject}
-                      onValueChange={setSubject}
-                      disabled={locked}
-                    >
-                      <SelectTrigger className="bg-muted/40 border-input focus:border-primary/50">
-                        <SelectValue placeholder="Select subject..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SUBJECT_TARGETS.map((s) => (
-                          <SelectItem key={s.name} value={s.name}>
-                            {s.name} ({s.target.toLocaleString()} target)
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+                    Subject
+                  </Label>
+                  <Select value={subject} onValueChange={handleSubjectChange}>
+                    <SelectTrigger className="bg-muted/40 border-input focus:border-primary/50">
+                      <SelectValue placeholder="Select subject..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SUBJECT_TARGETS.map((s) => (
+                        <SelectItem key={s.name} value={s.name}>
+                          {s.name} ({s.target.toLocaleString()} target)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">
-                      Questions Solved
-                    </Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={1000}
-                      placeholder="e.g. 50"
-                      value={countInput}
-                      onChange={(e) => setCountInput(e.target.value)}
-                      disabled={locked}
-                      className="bg-muted/40 border-input focus:border-primary/50 font-mono"
-                    />
-                  </div>
-
-                  <Button
-                    type="submit"
-                    disabled={
-                      addQuestions.isPending ||
-                      !subject ||
-                      !countInput ||
-                      locked
-                    }
-                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
-                  >
-                    {addQuestions.isPending ? (
-                      <span className="flex items-center gap-2">
-                        <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
-                        Adding...
-                      </span>
-                    ) : (
-                      <>
-                        <PlusCircle size={14} className="mr-2" />
-                        Add Questions
-                      </>
-                    )}
-                  </Button>
-                </form>
-              )}
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+                    Total Questions Solved
+                  </Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="e.g. 350"
+                    value={countInput}
+                    onChange={handleCountChange}
+                    className="bg-muted/40 border-input focus:border-primary/50 font-mono"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Enter your running total. Auto-saves when subject and count
+                    are filled.
+                  </p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </motion.div>

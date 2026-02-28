@@ -1,29 +1,38 @@
 # SSC CGL Ultimate Tracker
 
 ## Current State
-The app has a Questions tab that tracks 9000-question challenge progress by subject (Maths 2000, English 2000, Reasoning 2000, GK 1500, Current Affairs 1000, Computer 500). It shows overall circular progress, milestones, a log form, and a subject breakdown. Backend stores per-subject cumulative question counts. No monthly planning or month-by-month tracking exists.
+
+The app has Study Plan, Questions, and Monthly Plan tabs where users log study hours and questions. Editing is already restricted to the present day. The Settings dialog (TargetsPanel) lets users customize overall targets (total questions goal, daily hours, plan days, subject targets).
 
 ## Requested Changes (Diff)
 
 ### Add
-- Monthly Plan section in QuestionsTab: A 12-month plan showing how 9000 questions are distributed across months (750/month), with per-month target and progress tracking
-- Backend: store monthly question logs with year+month+count so monthly progress can be retrieved per month
-- Monthly progress bar cards (Jan–Dec) showing target vs. solved for that month
-- Current month highlighted with "active" state
-- Stats: questions logged this month, remaining for month, on-track indicator
+- A dedicated "Today's Edit" section inside the Settings dialog (TargetsPanel) that allows the user to:
+  - Set the exact number of questions done today (0 to max, any value, free input) per subject
+  - Set the exact number of study hours done today (0 to max, free input) per subject
+  - These fields pre-populate with today's already-saved values on load
+  - Auto-save to backend as the user types (debounced)
+  - Show "Editable today only" badge and today's date
+  - Past dates cannot be edited from this section
 
 ### Modify
-- QuestionsTab: Add a "Monthly Plan" section below the existing subject breakdown
-- Backend: add `addQuestionsMonthly` and `getMonthlyProgress` endpoints that store date-stamped records
+- TargetsPanel dialog: add a new "Today's Progress" section after the existing targets section, separated by a divider, with:
+  - Study hours input per subject (uses setStudySession with today's date)
+  - Questions solved input per subject (uses setQuestionCount)
+  - Both are present-day only, auto-saving
 
 ### Remove
 - Nothing removed
 
 ## Implementation Plan
-1. Update backend Motoko to add MonthlyQuestionLog type and two new endpoints: addQuestionsWithDate (stores subjectName, count, year, month) and getMonthlyProgress (returns aggregated count per year/month)
-2. Update QuestionsTab frontend:
-   - Add MonthlyPlanSection component showing 12-month grid
-   - Each month card: target (750), solved, progress bar, active/past/future state
-   - "This Month" badge on current month
-   - Summary stats: this month solved / 750, days remaining, pace indicator
-3. Wire the existing addQuestions form to also record a monthly log entry with current year/month
+
+1. In TargetsPanel.tsx:
+   - Import useGetQuestionProgress, useGetStudySessions, useSetStudySession, useSetQuestionCount hooks
+   - Add state for today's study hours per subject (map) and today's questions per subject (map)
+   - On dialog open, pre-populate those maps from existing sessions/progress data filtered to today
+   - Add a "Today's Progress" section below the subject targets divider
+   - For study hours: show each subject with an input pre-filled with today's logged hours (sum from sessions for today)
+   - For questions: show each subject with an input pre-filled with current question count
+   - Both auto-save on debounce using the existing setStudySession / setQuestionCount mutations
+   - Show save status indicators
+   - Show today's date badge with "Editable today only" note

@@ -1,5 +1,4 @@
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,17 +17,19 @@ import {
   CheckCircle2,
   Clock,
   Flame,
-  Lock,
   PlusCircle,
   Target,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { StudySession } from "../backend.d";
-import { useAddStudySession, useGetStudySessions } from "../hooks/useQueries";
+import {
+  useGetStudySessions,
+  useGetTargets,
+  useSetStudySession,
+} from "../hooks/useQueries";
+import TargetsPanel from "./TargetsPanel";
 
-const DAILY_TARGET_HOURS = 15;
 const SSC_SUBJECTS = [
   "Maths",
   "English",
@@ -49,11 +50,6 @@ const SUBJECT_COLORS: Record<string, string> = {
 
 function getTodayDate() {
   return new Date().toISOString().split("T")[0];
-}
-
-function isPastNoon() {
-  // Today is always editable for the full 24 hours
-  return false;
 }
 
 function formatHours(h: number) {
@@ -134,13 +130,20 @@ function CircularProgress({
   );
 }
 
+type SaveStatus = "idle" | "saving" | "saved";
+
 export default function StudyPlanTab() {
   const { data: sessions = [], isLoading } = useGetStudySessions();
-  const addSession = useAddStudySession();
+  const { data: targets } = useGetTargets();
+  const setSession = useSetStudySession();
+
+  const DAILY_TARGET_HOURS = targets?.dailyStudyHoursTarget ?? 15;
 
   const [subject, setSubject] = useState("");
   const [hoursInput, setHoursInput] = useState("");
-  const locked = isPastNoon();
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const today = getTodayDate();
   const todaysSessions = sessions.filter((s) => s.date === today);
@@ -163,30 +166,69 @@ export default function StudyPlanTab() {
       (todaySubjectMap[s.subjectName] ?? 0) + s.hours;
   }
 
-  const handleLog = (e: React.FormEvent) => {
-    e.preventDefault();
-    const h = Number.parseFloat(hoursInput);
-    if (!subject) {
-      toast.error("Select a subject");
-      return;
-    }
-    if (Number.isNaN(h) || h <= 0 || h > 15) {
-      toast.error("Enter valid hours (0.5 – 15)");
-      return;
-    }
-    addSession.mutate(
-      { subjectName: subject, hours: h, date: today },
-      {
-        onSuccess: () => {
-          toast.success(`Logged ${formatHours(h)} for ${subject}`);
-          setHoursInput("");
-        },
-        onError: () => toast.error("Failed to log session"),
-      },
-    );
-  };
-
   const goalMet = todayHours >= DAILY_TARGET_HOURS;
+
+  const triggerSave = useCallback(
+    (subj: string, hrs: string) => {
+      const h = Number.parseFloat(hrs);
+      if (!subj || Number.isNaN(h) || h < 0.5 || h > DAILY_TARGET_HOURS + 10)
+        return;
+
+      setSaveStatus("saving");
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+
+      setSession.mutate(
+        { subjectName: subj, hours: h, date: today },
+        {
+          onSuccess: () => {
+            setSaveStatus("saved");
+            savedTimerRef.current = setTimeout(
+              () => setSaveStatus("idle"),
+              3000,
+            );
+          },
+          onError: () => {
+            setSaveStatus("idle");
+            toast.error("Failed to save session");
+          },
+        },
+      );
+    },
+    [setSession, today, DAILY_TARGET_HOURS],
+  );
+
+  const handleSubjectChange = useCallback(
+    (val: string) => {
+      setSubject(val);
+      // Immediately save if hoursInput is valid
+      const h = Number.parseFloat(hoursInput);
+      if (!Number.isNaN(h) && h >= 0.5 && h <= DAILY_TARGET_HOURS + 10) {
+        triggerSave(val, hoursInput);
+      }
+    },
+    [hoursInput, triggerSave, DAILY_TARGET_HOURS],
+  );
+
+  const handleHoursChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      setHoursInput(val);
+
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        if (subject) triggerSave(subject, val);
+      }, 600);
+    },
+    [subject, triggerSave],
+  );
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
+  }, []);
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -201,11 +243,15 @@ export default function StudyPlanTab() {
             <Clock size={16} className="text-primary" />
           </div>
           <h2 className="font-display text-2xl font-bold text-foreground">
-            15 Hours Study Plan
+            {DAILY_TARGET_HOURS}H Study Plan
           </h2>
+          <div className="ml-auto">
+            <TargetsPanel />
+          </div>
         </div>
         <p className="text-sm text-muted-foreground ml-11">
-          Track your daily 15-hour study target across all SSC CGL subjects
+          Track your daily {DAILY_TARGET_HOURS}-hour study target across all SSC
+          CGL subjects
         </p>
       </motion.div>
 
@@ -302,111 +348,75 @@ export default function StudyPlanTab() {
               <CardTitle className="font-display text-base font-semibold flex items-center gap-2">
                 <PlusCircle size={16} className="text-primary" />
                 Log Study Hours
-                {locked && (
-                  <span className="ml-auto flex items-center gap-1 text-amber-400 text-xs font-normal">
-                    <Lock size={11} />
-                    Locked
-                  </span>
-                )}
+                {/* Save status indicator */}
+                <span className="ml-auto">
+                  {saveStatus === "saving" && (
+                    <span className="flex items-center gap-1 text-muted-foreground text-xs font-normal">
+                      <span className="animate-spin h-3 w-3 border border-current border-t-transparent rounded-full" />
+                      Saving…
+                    </span>
+                  )}
+                  {saveStatus === "saved" && (
+                    <span className="flex items-center gap-1 text-emerald-400 text-xs font-normal">
+                      <CheckCircle2 size={12} />
+                      Saved
+                    </span>
+                  )}
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {locked ? (
-                <motion.div
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex flex-col items-center gap-3 py-6 px-4 rounded-xl border border-amber-500/30 bg-amber-500/5 text-center"
-                >
-                  <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center">
-                    <Lock size={18} className="text-amber-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-amber-400">
-                      Editing locked after 12:00 PM
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Today's study hours have been saved. Come back tomorrow to
-                      log new sessions.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <Clock size={11} />
-                    <span>Logged today: {formatHours(todayHours)}</span>
-                  </div>
-                </motion.div>
-              ) : (
-                <form onSubmit={handleLog} className="space-y-4">
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30 border border-border mb-2">
-                    <Clock
-                      size={12}
-                      className="text-muted-foreground shrink-0"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Logging for today:{" "}
-                      <span className="font-semibold text-foreground">
-                        {new Date().toLocaleDateString("en-IN", {
-                          weekday: "short",
-                          day: "numeric",
-                          month: "short",
-                        })}
-                      </span>{" "}
-                      · Editable all day
-                    </p>
-                  </div>
+              <div className="space-y-4">
+                {/* Today badge */}
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 text-xs font-medium gap-1.5">
+                    <Clock size={10} />
+                    {new Date().toLocaleDateString("en-IN", {
+                      weekday: "short",
+                      day: "numeric",
+                      month: "short",
+                    })}{" "}
+                    · Editable all day
+                  </Badge>
+                </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">
-                      Subject
-                    </Label>
-                    <Select value={subject} onValueChange={setSubject}>
-                      <SelectTrigger className="bg-muted/40 border-input focus:border-primary/50">
-                        <SelectValue placeholder="Select subject..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SSC_SUBJECTS.map((s) => (
-                          <SelectItem key={s} value={s}>
-                            {s}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+                    Subject
+                  </Label>
+                  <Select value={subject} onValueChange={handleSubjectChange}>
+                    <SelectTrigger className="bg-muted/40 border-input focus:border-primary/50">
+                      <SelectValue placeholder="Select subject..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SSC_SUBJECTS.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">
-                      Hours Studied
-                    </Label>
-                    <Input
-                      type="number"
-                      min={0.5}
-                      max={15}
-                      step={0.5}
-                      placeholder="e.g. 2.5"
-                      value={hoursInput}
-                      onChange={(e) => setHoursInput(e.target.value)}
-                      className="bg-muted/40 border-input focus:border-primary/50 font-mono"
-                    />
-                  </div>
-
-                  <Button
-                    type="submit"
-                    disabled={addSession.isPending || !subject || !hoursInput}
-                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
-                  >
-                    {addSession.isPending ? (
-                      <span className="flex items-center gap-2">
-                        <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
-                        Logging...
-                      </span>
-                    ) : (
-                      <>
-                        <Clock size={14} className="mr-2" />
-                        Log Hours
-                      </>
-                    )}
-                  </Button>
-                </form>
-              )}
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+                    Hours Studied
+                  </Label>
+                  <Input
+                    type="number"
+                    min={0.5}
+                    max={15}
+                    step={0.5}
+                    placeholder="e.g. 2.5"
+                    value={hoursInput}
+                    onChange={handleHoursChange}
+                    className="bg-muted/40 border-input focus:border-primary/50 font-mono"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Auto-saves when subject and hours are both filled
+                  </p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </motion.div>

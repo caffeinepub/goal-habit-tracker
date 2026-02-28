@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -6,12 +7,15 @@ import {
   Clock,
   GraduationCap,
   Home,
+  LogOut,
   PlusCircle,
   Search,
   Timer,
+  User,
 } from "lucide-react";
 import { motion } from "motion/react";
 import type { TabId } from "../App";
+import { useInternetIdentity } from "../hooks/useInternetIdentity";
 
 interface SidebarProps {
   activeTab: TabId;
@@ -30,6 +34,11 @@ const navItems: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "questions", label: "Questions", icon: <BookOpen size={18} /> },
 ];
 
+function truncatePrincipal(principal: string): string {
+  if (principal.length <= 12) return principal;
+  return `${principal.slice(0, 6)}...${principal.slice(-4)}`;
+}
+
 export default function Sidebar({
   activeTab,
   onTabChange,
@@ -37,6 +46,9 @@ export default function Sidebar({
   search,
   onSearchChange,
 }: SidebarProps) {
+  const { identity, clear } = useInternetIdentity();
+  const principalStr = identity?.getPrincipal().toString() ?? "";
+
   return (
     <aside className="w-64 shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col h-screen sticky top-0 overflow-hidden">
       {/* Logo */}
@@ -97,8 +109,8 @@ export default function Sidebar({
         })}
       </nav>
 
-      {/* Bottom: Overall Progress */}
-      <div className="p-4 border-t border-sidebar-border">
+      {/* Bottom: Overall Progress + Account */}
+      <div className="p-4 border-t border-sidebar-border space-y-3">
         <div className="mb-2 flex justify-between items-center">
           <p className="text-xs text-muted-foreground font-medium">
             Overall Progress
@@ -108,9 +120,30 @@ export default function Sidebar({
           </span>
         </div>
         <Progress value={overallCompletion} className="h-1.5 bg-muted" />
-        <p className="text-[10px] text-muted-foreground mt-2 text-center">
-          SSC CGL Ultimate Tracker
-        </p>
+
+        {/* User principal */}
+        {principalStr && (
+          <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-muted/30">
+            <User size={11} className="text-muted-foreground shrink-0" />
+            <span
+              className="font-mono text-[10px] text-muted-foreground truncate"
+              title={principalStr}
+            >
+              {truncatePrincipal(principalStr)}
+            </span>
+          </div>
+        )}
+
+        {/* Logout button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={clear}
+          className="w-full h-7 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 gap-1.5 justify-start"
+        >
+          <LogOut size={12} />
+          Log out
+        </Button>
       </div>
     </aside>
   );

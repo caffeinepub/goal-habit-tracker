@@ -1,6 +1,64 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Subject } from "../backend.d";
+import type { Subject, SubjectTarget, UserTargets } from "../backend.d";
 import { useActor } from "./useActor";
+
+const DEFAULT_TARGETS: UserTargets = {
+  dailyStudyHoursTarget: 15,
+  totalQuestionsGoal: BigInt(9000),
+  planTotalDays: BigInt(30),
+  subjectTargets: [
+    { name: "Maths", target: BigInt(2000) },
+    { name: "English", target: BigInt(2000) },
+    { name: "Reasoning", target: BigInt(2000) },
+    { name: "General Knowledge", target: BigInt(1500) },
+    { name: "Current Affairs", target: BigInt(1000) },
+    { name: "Computer", target: BigInt(500) },
+  ],
+};
+
+export { DEFAULT_TARGETS };
+
+export function useGetTargets() {
+  const { actor, isFetching } = useActor();
+  return useQuery<UserTargets>({
+    queryKey: ["targets"],
+    queryFn: async () => {
+      if (!actor) return DEFAULT_TARGETS;
+      return actor.getTargets();
+    },
+    enabled: !!actor && !isFetching,
+    placeholderData: DEFAULT_TARGETS,
+  });
+}
+
+export function useSetTargets() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      totalQuestionsGoal,
+      dailyStudyHoursTarget,
+      subjectTargets,
+      planTotalDays,
+    }: {
+      totalQuestionsGoal: number;
+      dailyStudyHoursTarget: number;
+      subjectTargets: Array<SubjectTarget>;
+      planTotalDays: number;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      return actor.setTargets(
+        BigInt(totalQuestionsGoal),
+        dailyStudyHoursTarget,
+        subjectTargets,
+        BigInt(planTotalDays),
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["targets"] });
+    },
+  });
+}
 
 export function useGetSubjects() {
   const { actor, isFetching } = useActor();
@@ -160,6 +218,84 @@ export function useAddQuestions() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["questionProgress"] });
+    },
+  });
+}
+
+export function useSetQuestionCount() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      subjectName,
+      count,
+    }: {
+      subjectName: string;
+      count: number;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      return actor.setQuestionCount(subjectName, BigInt(count));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["questionProgress"] });
+    },
+  });
+}
+
+// ---- Monthly Logs ----
+
+export function useGetMonthlyLogs() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["monthlyLogs"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getMonthlyLogs();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useSaveMonthlyLog() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      date,
+      count,
+    }: {
+      date: string;
+      count: number;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      return actor.saveMonthlyLog(date, BigInt(count));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["monthlyLogs"] });
+    },
+  });
+}
+
+// ---- Set Study Session (overwrite) ----
+
+export function useSetStudySession() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      subjectName,
+      hours,
+      date,
+    }: {
+      subjectName: string;
+      hours: number;
+      date: string;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      return actor.setStudySession(subjectName, hours, date);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["studySessions"] });
     },
   });
 }
