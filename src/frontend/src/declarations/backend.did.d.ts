@@ -27,6 +27,12 @@ export interface FileMetadata {
   'sizeBytes' : bigint,
   'uploadedAt' : string,
 }
+export interface MockTestScore {
+  'totalMarks' : bigint,
+  'subject' : string,
+  'date' : string,
+  'score' : bigint,
+}
 export interface MonthlyLogEntry { 'date' : string, 'count' : bigint }
 export interface NotebookEntry {
   'id' : bigint,
@@ -52,6 +58,20 @@ export interface Question {
   'questionText' : string,
   'questionType' : string,
   'options' : Array<string>,
+}
+export type Section = { 'studyplan' : null } |
+  { 'questions' : null } |
+  { 'dailyroutine' : null };
+export interface SectionPlanCycle {
+  'endDate' : string,
+  'section' : Section,
+  'summary' : bigint,
+  'startDate' : string,
+}
+export interface SectionTimeLog {
+  'date' : string,
+  'section' : Section,
+  'elapsedSeconds' : bigint,
 }
 export interface StudySession {
   'hours' : number,
@@ -108,7 +128,7 @@ export interface _SERVICE {
   >,
   '_caffeineStorageUpdateGatewayPrincipals' : ActorMethod<[], undefined>,
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
-  'addMockScore' : ActorMethod<[bigint], undefined>,
+  'addMockScore' : ActorMethod<[string, bigint, bigint, string], undefined>,
   'addNotebookEntry' : ActorMethod<[string, string, string, string], undefined>,
   'addNotepadEntry' : ActorMethod<[string, string, string], undefined>,
   'addQuestion' : ActorMethod<
@@ -127,14 +147,17 @@ export interface _SERVICE {
   'getAllFileMetadata' : ActorMethod<[], Array<FileMetadata>>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
+  'getCustomSubjects' : ActorMethod<[], Array<string>>,
   'getExamSessions' : ActorMethod<[], Array<ExamSession>>,
-  'getMockScores' : ActorMethod<[], Array<bigint>>,
+  'getMockScores' : ActorMethod<[], Array<MockTestScore>>,
   'getMonthlyLogs' : ActorMethod<[], Array<MonthlyLogEntry>>,
   'getNotebookEntries' : ActorMethod<[], Array<NotebookEntry>>,
   'getNotepadEntries' : ActorMethod<[], Array<NotepadEntry>>,
+  'getPlanCycles' : ActorMethod<[], Array<SectionPlanCycle>>,
   'getQuestionProgress' : ActorMethod<[], Array<SubjectQuestionProgress>>,
   'getQuestions' : ActorMethod<[], Array<Question>>,
   'getQuestionsBySubject' : ActorMethod<[string], Array<Question>>,
+  'getSectionTimeLogs' : ActorMethod<[], Array<SectionTimeLog>>,
   'getStudySessions' : ActorMethod<[], Array<StudySession>>,
   'getSubjects' : ActorMethod<[], Array<Subject>>,
   'getTargets' : ActorMethod<[], UserTargets>,
@@ -150,6 +173,9 @@ export interface _SERVICE {
     bigint
   >,
   'saveMonthlyLog' : ActorMethod<[string, bigint], undefined>,
+  'savePlanCycle' : ActorMethod<[Section, string, string, bigint], undefined>,
+  'saveSectionTimeLog' : ActorMethod<[Section, string, bigint], undefined>,
+  'setCustomSubjects' : ActorMethod<[Array<string>], undefined>,
   'setQuestionCount' : ActorMethod<[string, bigint], undefined>,
   'setStudySession' : ActorMethod<[string, number, string], undefined>,
   'setTargets' : ActorMethod<

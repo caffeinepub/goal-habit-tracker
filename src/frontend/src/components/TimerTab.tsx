@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import {
   Coffee,
   Flame,
+  Grid3X3,
   Pause,
   Play,
   RotateCcw,
@@ -103,6 +104,33 @@ function getLast14Days(): string[] {
     return d.toISOString().split("T")[0];
   });
 }
+
+// ── Section time helpers ──────────────────────────────────────────────────
+
+function getLast7DaysStr(): string[] {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d.toISOString().split("T")[0];
+  });
+}
+
+function readSectionTime(prefix: string, date: string): number {
+  return Number(localStorage.getItem(`${prefix}${date}`) ?? 0);
+}
+
+function formatHMS(secs: number): string {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+const SECTION_PREFIXES = {
+  "Study Plan": "ssc_section_time_studyplan_",
+  Questions: "ssc_section_time_questions_",
+  "Daily Routine": "ssc_section_time_dailyroutine_",
+} as const;
 
 const TIMER_PRESETS: Record<TimerMode, { label: string; color: string }> = {
   work: { label: "Focus", color: "text-primary" },
@@ -361,6 +389,30 @@ export default function TimerTab({
           </div>
         </div>
       </motion.div>
+
+      {/* Remaining / Used time stat boxes */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="rounded-xl border border-border bg-muted/30 p-3 text-center">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
+            Time Remaining
+          </p>
+          <p
+            className={`font-mono text-xl font-bold tabular-nums ${TIMER_PRESETS[mode].color}`}
+          >
+            {String(minutes).padStart(2, "0")}:
+            {String(seconds).padStart(2, "0")}
+          </p>
+        </div>
+        <div className="rounded-xl border border-border bg-muted/30 p-3 text-center">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
+            Time Used
+          </p>
+          <p className="font-mono text-xl font-bold tabular-nums text-emerald-400">
+            {String(Math.floor((total - timeLeft) / 60)).padStart(2, "0")}:
+            {String((total - timeLeft) % 60).padStart(2, "0")}
+          </p>
+        </div>
+      </div>
 
       {/* Controls */}
       <div className="flex items-center justify-center gap-3 mb-6">
@@ -624,6 +676,77 @@ export default function TimerTab({
           </p>
         </CardContent>
       </Card>
+
+      {/* ── Section Time Breakdown ────────────────────────────────────────── */}
+      <SectionBreakdownCard />
     </div>
+  );
+}
+
+function SectionBreakdownCard() {
+  const todayStr = getTodayDateStr();
+  const last7 = getLast7DaysStr();
+
+  const sectionRows = (
+    Object.entries(SECTION_PREFIXES) as [
+      keyof typeof SECTION_PREFIXES,
+      string,
+    ][]
+  ).map(([name, prefix]) => {
+    const todaySecs = readSectionTime(prefix, todayStr);
+    const weekSecs = last7.reduce(
+      (acc, d) => acc + readSectionTime(prefix, d),
+      0,
+    );
+    return { name, todaySecs, weekSecs };
+  });
+
+  return (
+    <Card className="border-border mb-4">
+      <CardHeader className="pb-3">
+        <CardTitle className="font-display text-sm font-semibold flex items-center gap-2">
+          <Grid3X3 size={14} className="text-primary" />
+          Section Time Breakdown
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="rounded-lg border border-border overflow-hidden">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-muted/40">
+                <th className="px-3 py-2 text-left text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                  Section
+                </th>
+                <th className="px-3 py-2 text-right text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                  Today
+                </th>
+                <th className="px-3 py-2 text-right text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                  This Week
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {sectionRows.map((row) => (
+                <tr key={row.name} className="border-t border-border">
+                  <td className="px-3 py-2 font-medium text-foreground">
+                    {row.name}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-primary font-semibold">
+                    {row.todaySecs > 0 ? formatHMS(row.todaySecs) : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-muted-foreground">
+                    {row.weekSecs > 0 ? formatHMS(row.weekSecs) : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-2">
+          Time is tracked per section via your local device and persists across
+          app restarts.
+        </p>
+      </CardContent>
+    </Card>
   );
 }

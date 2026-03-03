@@ -41,7 +41,7 @@ import {
   PlusCircle,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { formatTime } from "./AppearancePanel";
 
@@ -365,6 +365,32 @@ export default function DailyRoutineTab({
 
   // ── 100-day progress table ────────────────────────────────────────────────
   const [startDate, setStartDateState] = useState(getStartDate);
+
+  // ── Session elapsed time tracking for Daily Routine ───────────────────────
+  const sessionStartRef = useRef<number>(Date.now());
+  const accIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    // Accumulate time every 10 seconds
+    accIntervalRef.current = setInterval(() => {
+      const todayKey = new Date().toISOString().split("T")[0];
+      const k = `ssc_section_time_dailyroutine_${todayKey}`;
+      const current = Number(localStorage.getItem(k) ?? 0);
+      localStorage.setItem(k, String(current + 10));
+    }, 10000);
+
+    return () => {
+      // On unmount, save remaining partial time
+      if (accIntervalRef.current) clearInterval(accIntervalRef.current);
+      const elapsed = Math.floor((Date.now() - sessionStartRef.current) / 1000);
+      if (elapsed > 0) {
+        const todayKey = new Date().toISOString().split("T")[0];
+        const k = `ssc_section_time_dailyroutine_${todayKey}`;
+        const current = Number(localStorage.getItem(k) ?? 0);
+        localStorage.setItem(k, String(current + (elapsed % 10)));
+      }
+    };
+  }, []);
 
   // ── Load data when selected day changes ──────────────────────────────────
   useEffect(() => {
@@ -916,245 +942,243 @@ export default function DailyRoutineTab({
                   )}
                 </div>
               ) : (
-                <ScrollArea className="max-h-96">
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-sm">
-                      <thead className="sticky top-0 z-10">
-                        <tr className="bg-card/95 backdrop-blur-sm">
-                          <th className="w-10 px-3 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                            #
+                <div
+                  className="max-h-96 w-full"
+                  style={{ overflowX: "auto", overflowY: "auto" }}
+                >
+                  <table className="w-full border-collapse text-sm">
+                    <thead className="sticky top-0 z-10">
+                      <tr className="bg-card/95 backdrop-blur-sm">
+                        <th className="w-10 px-3 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                          #
+                        </th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[110px]">
+                          Time
+                        </th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[150px]">
+                          Activity
+                        </th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[100px]">
+                          Subject
+                        </th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-20">
+                          Duration
+                        </th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-24">
+                          Priority
+                        </th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[140px]">
+                          Notes
+                        </th>
+                        <th className="px-4 py-3 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-16">
+                          Done
+                        </th>
+                        {canEdit && (
+                          <th className="px-3 py-3 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-20">
+                            Actions
                           </th>
-                          <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[110px]">
-                            Time
-                          </th>
-                          <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[150px]">
-                            Activity
-                          </th>
-                          <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[100px]">
-                            Subject
-                          </th>
-                          <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-20">
-                            Duration
-                          </th>
-                          <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-24">
-                            Priority
-                          </th>
-                          <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[140px]">
-                            Notes
-                          </th>
-                          <th className="px-4 py-3 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-16">
-                            Done
-                          </th>
-                          {canEdit && (
-                            <th className="px-3 py-3 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-20">
-                              Actions
-                            </th>
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sorted.map((row, idx) => {
-                          const done = doneIds.has(row.id);
-                          const dur = calcDuration(row.startTime, row.endTime);
-                          const pStyle = PRIORITY_STYLES[row.priority];
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sorted.map((row, idx) => {
+                        const done = doneIds.has(row.id);
+                        const dur = calcDuration(row.startTime, row.endTime);
+                        const pStyle = PRIORITY_STYLES[row.priority];
 
-                          return (
-                            <tr
-                              key={row.id}
-                              className={`border-t border-border transition-colors group ${
-                                done
-                                  ? "bg-emerald-500/5 hover:bg-emerald-500/8"
-                                  : "hover:bg-accent/15"
-                              }`}
-                            >
-                              {/* # */}
-                              <td className="px-3 py-3 text-xs text-muted-foreground font-mono">
-                                {idx + 1}
-                              </td>
+                        return (
+                          <tr
+                            key={row.id}
+                            className={`border-t border-border transition-colors group ${
+                              done
+                                ? "bg-emerald-500/5 hover:bg-emerald-500/8"
+                                : "hover:bg-accent/15"
+                            }`}
+                          >
+                            {/* # */}
+                            <td className="px-3 py-3 text-xs text-muted-foreground font-mono">
+                              {idx + 1}
+                            </td>
 
-                              {/* Time */}
-                              <td className="px-4 py-3">
+                            {/* Time */}
+                            <td className="px-4 py-3">
+                              <span
+                                className={`text-xs font-mono font-semibold ${done ? "text-muted-foreground line-through" : "text-foreground"}`}
+                              >
+                                {formatTime(row.startTime, timeFormat)} –{" "}
+                                {formatTime(row.endTime, timeFormat)}
+                              </span>
+                            </td>
+
+                            {/* Activity */}
+                            <td className="px-4 py-3">
+                              <span
+                                className={`text-sm font-medium ${done ? "text-muted-foreground line-through" : "text-foreground"}`}
+                              >
+                                {row.activity}
+                              </span>
+                            </td>
+
+                            {/* Subject */}
+                            <td className="px-4 py-3">
+                              {row.subject ? (
                                 <span
-                                  className={`text-xs font-mono font-semibold ${done ? "text-muted-foreground line-through" : "text-foreground"}`}
+                                  className={`text-xs px-2 py-1 rounded-md bg-primary/10 text-primary border border-primary/20 font-medium ${done ? "opacity-50" : ""}`}
                                 >
-                                  {formatTime(row.startTime, timeFormat)} –{" "}
-                                  {formatTime(row.endTime, timeFormat)}
+                                  {row.subject}
                                 </span>
-                              </td>
+                              ) : (
+                                <span className="text-muted-foreground/40 text-xs">
+                                  –
+                                </span>
+                              )}
+                            </td>
 
-                              {/* Activity */}
-                              <td className="px-4 py-3">
+                            {/* Duration */}
+                            <td className="px-4 py-3">
+                              <span
+                                className={`text-xs font-mono ${done ? "text-muted-foreground" : "text-foreground"}`}
+                              >
+                                {formatDuration(dur)}
+                              </span>
+                            </td>
+
+                            {/* Priority */}
+                            <td className="px-4 py-3">
+                              <span
+                                className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border font-semibold ${pStyle.badge} ${done ? "opacity-50" : ""}`}
+                              >
                                 <span
-                                  className={`text-sm font-medium ${done ? "text-muted-foreground line-through" : "text-foreground"}`}
-                                >
-                                  {row.activity}
-                                </span>
-                              </td>
+                                  className={`w-1.5 h-1.5 rounded-full ${pStyle.dot}`}
+                                />
+                                {pStyle.label}
+                              </span>
+                            </td>
 
-                              {/* Subject */}
-                              <td className="px-4 py-3">
-                                {row.subject ? (
-                                  <span
-                                    className={`text-xs px-2 py-1 rounded-md bg-primary/10 text-primary border border-primary/20 font-medium ${done ? "opacity-50" : ""}`}
+                            {/* Notes */}
+                            <td className="px-4 py-3">
+                              <span
+                                className={`text-xs ${done ? "text-muted-foreground/50 line-through" : "text-muted-foreground"} max-w-[180px] block truncate`}
+                                title={row.notes}
+                              >
+                                {row.notes || "–"}
+                              </span>
+                            </td>
+
+                            {/* Done checkbox */}
+                            <td className="px-4 py-3 text-center">
+                              {dayType === "future" ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex cursor-not-allowed opacity-40">
+                                      <Circle
+                                        size={20}
+                                        className="text-muted-foreground/40"
+                                      />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent
+                                    side="top"
+                                    className="text-xs"
                                   >
-                                    {row.subject}
-                                  </span>
-                                ) : (
-                                  <span className="text-muted-foreground/40 text-xs">
-                                    –
-                                  </span>
-                                )}
-                              </td>
-
-                              {/* Duration */}
-                              <td className="px-4 py-3">
-                                <span
-                                  className={`text-xs font-mono ${done ? "text-muted-foreground" : "text-foreground"}`}
-                                >
-                                  {formatDuration(dur)}
-                                </span>
-                              </td>
-
-                              {/* Priority */}
-                              <td className="px-4 py-3">
-                                <span
-                                  className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border font-semibold ${pStyle.badge} ${done ? "opacity-50" : ""}`}
-                                >
-                                  <span
-                                    className={`w-1.5 h-1.5 rounded-full ${pStyle.dot}`}
+                                    Available on that day
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : dayType === "past" ? (
+                                done ? (
+                                  <CheckCircle2
+                                    size={20}
+                                    className="text-emerald-500/50 mx-auto"
                                   />
-                                  {pStyle.label}
-                                </span>
-                              </td>
-
-                              {/* Notes */}
-                              <td className="px-4 py-3">
-                                <span
-                                  className={`text-xs ${done ? "text-muted-foreground/50 line-through" : "text-muted-foreground"} max-w-[180px] block truncate`}
-                                  title={row.notes}
+                                ) : (
+                                  <Circle
+                                    size={20}
+                                    className="text-muted-foreground/25 mx-auto"
+                                  />
+                                )
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleDone(row.id)}
+                                  aria-label={
+                                    done ? "Mark as not done" : "Mark as done"
+                                  }
+                                  className="transition-all hover:scale-110"
                                 >
-                                  {row.notes || "–"}
-                                </span>
-                              </td>
-
-                              {/* Done checkbox */}
-                              <td className="px-4 py-3 text-center">
-                                {dayType === "future" ? (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="inline-flex cursor-not-allowed opacity-40">
-                                        <Circle
-                                          size={20}
-                                          className="text-muted-foreground/40"
-                                        />
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent
-                                      side="top"
-                                      className="text-xs"
-                                    >
-                                      Available on that day
-                                    </TooltipContent>
-                                  </Tooltip>
-                                ) : dayType === "past" ? (
-                                  done ? (
+                                  {done ? (
                                     <CheckCircle2
                                       size={20}
-                                      className="text-emerald-500/50 mx-auto"
+                                      className="text-emerald-500"
                                     />
                                   ) : (
                                     <Circle
                                       size={20}
-                                      className="text-muted-foreground/25 mx-auto"
+                                      className="text-muted-foreground/40 hover:text-emerald-400 transition-colors"
                                     />
-                                  )
-                                ) : (
+                                  )}
+                                </button>
+                              )}
+                            </td>
+
+                            {/* Actions — only for editable days */}
+                            {canEdit && (
+                              <td className="px-3 py-3 text-center">
+                                <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <button
                                     type="button"
-                                    onClick={() => toggleDone(row.id)}
-                                    aria-label={
-                                      done ? "Mark as not done" : "Mark as done"
-                                    }
-                                    className="transition-all hover:scale-110"
+                                    onClick={() => openEdit(row)}
+                                    aria-label="Edit task"
+                                    className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
                                   >
-                                    {done ? (
-                                      <CheckCircle2
-                                        size={20}
-                                        className="text-emerald-500"
-                                      />
-                                    ) : (
-                                      <Circle
-                                        size={20}
-                                        className="text-muted-foreground/40 hover:text-emerald-400 transition-colors"
-                                      />
-                                    )}
+                                    <Pencil size={13} />
                                   </button>
-                                )}
-                              </td>
-
-                              {/* Actions — only for editable days */}
-                              {canEdit && (
-                                <td className="px-3 py-3 text-center">
-                                  <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                      type="button"
-                                      onClick={() => openEdit(row)}
-                                      aria-label="Edit task"
-                                      className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                                    >
-                                      <Pencil size={13} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDelete(row.id)}
-                                      aria-label="Delete task"
-                                      className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                                    >
-                                      <Trash2 size={13} />
-                                    </button>
-                                  </div>
-                                </td>
-                              )}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-
-                      {/* Footer: total duration */}
-                      {rows.length > 0 && (
-                        <tfoot>
-                          <tr className="border-t border-border bg-card/60">
-                            <td
-                              colSpan={canEdit ? 4 : 4}
-                              className="px-4 py-2.5 text-xs text-muted-foreground font-semibold"
-                            >
-                              Total scheduled
-                            </td>
-                            <td className="px-4 py-2.5 text-xs font-mono font-bold text-primary">
-                              {formatDuration(totalDuration)}
-                            </td>
-                            <td
-                              colSpan={canEdit ? 4 : 3}
-                              className="px-4 py-2.5"
-                            >
-                              {dayType !== "past" && rows.length > 0 && (
-                                <div className="flex items-center gap-2 justify-end">
-                                  <Clock
-                                    size={12}
-                                    className="text-muted-foreground"
-                                  />
-                                  <span className="text-xs text-muted-foreground">
-                                    {doneCount}/{rows.length} complete
-                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDelete(row.id)}
+                                    aria-label="Delete task"
+                                    className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
                                 </div>
-                              )}
-                            </td>
+                              </td>
+                            )}
                           </tr>
-                        </tfoot>
-                      )}
-                    </table>
-                  </div>
-                </ScrollArea>
+                        );
+                      })}
+                    </tbody>
+
+                    {/* Footer: total duration */}
+                    {rows.length > 0 && (
+                      <tfoot>
+                        <tr className="border-t border-border bg-card/60">
+                          <td
+                            colSpan={canEdit ? 4 : 4}
+                            className="px-4 py-2.5 text-xs text-muted-foreground font-semibold"
+                          >
+                            Total scheduled
+                          </td>
+                          <td className="px-4 py-2.5 text-xs font-mono font-bold text-primary">
+                            {formatDuration(totalDuration)}
+                          </td>
+                          <td colSpan={canEdit ? 4 : 3} className="px-4 py-2.5">
+                            {dayType !== "past" && rows.length > 0 && (
+                              <div className="flex items-center gap-2 justify-end">
+                                <Clock
+                                  size={12}
+                                  className="text-muted-foreground"
+                                />
+                                <span className="text-xs text-muted-foreground">
+                                  {doneCount}/{rows.length} complete
+                                </span>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    )}
+                  </table>
+                </div>
               )}
             </div>
 
@@ -1401,135 +1425,137 @@ export default function DailyRoutineTab({
               </DialogTitle>
             </DialogHeader>
 
-            <div className="grid gap-4 py-2">
-              {/* Activity */}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">
-                  Activity <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  placeholder="e.g. Morning Revision"
-                  value={form.activity}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, activity: e.target.value }))
-                  }
-                  className="h-9 text-sm bg-input border-border"
-                  autoFocus
-                />
-              </div>
-
-              {/* Time row — AM/PM pickers */}
-              <div className="grid grid-cols-2 gap-3">
-                <AmPmTimePicker
-                  value={form.startTime}
-                  onChange={(v) => setForm((f) => ({ ...f, startTime: v }))}
-                  label="Start Time"
-                />
-                <AmPmTimePicker
-                  value={form.endTime}
-                  onChange={(v) => setForm((f) => ({ ...f, endTime: v }))}
-                  label="End Time"
-                />
-              </div>
-
-              {/* Auto duration */}
-              {duration > 0 && (
-                <p className="text-xs text-primary font-medium -mt-2">
-                  Duration: {formatDuration(duration)}
-                </p>
-              )}
-
-              {/* Subject + Priority row */}
-              <div className="grid grid-cols-2 gap-3">
+            <ScrollArea className="max-h-[60vh]">
+              <div className="grid gap-4 py-2 pr-2">
+                {/* Activity */}
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">
-                    Subject
+                    Activity <span className="text-destructive">*</span>
                   </Label>
-                  <Select
-                    value={subjectSelect}
-                    onValueChange={(v) => {
-                      setSubjectSelect(v);
-                      if (v !== "Other (custom)") {
-                        setForm((f) => ({ ...f, subject: v }));
-                        setCustomSubject("");
-                      } else {
-                        setForm((f) => ({
-                          ...f,
-                          subject: customSubject.trim(),
-                        }));
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="h-9 text-sm bg-input border-border">
-                      <SelectValue placeholder="Select subject" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
-                      {SUBJECT_OPTIONS.map((s) => (
-                        <SelectItem key={s} value={s} className="text-sm">
-                          {s}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {subjectSelect === "Other (custom)" && (
-                    <Input
-                      placeholder="Enter custom subject..."
-                      value={customSubject}
-                      onChange={(e) => {
-                        setCustomSubject(e.target.value);
-                        setForm((f) => ({
-                          ...f,
-                          subject: e.target.value.trim(),
-                        }));
-                      }}
-                      className="h-8 text-sm bg-input border-border mt-1"
-                      autoFocus
-                    />
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">
-                    Priority
-                  </Label>
-                  <Select
-                    value={form.priority}
-                    onValueChange={(v) =>
-                      setForm((f) => ({ ...f, priority: v as Priority }))
+                  <Input
+                    placeholder="e.g. Morning Revision"
+                    value={form.activity}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, activity: e.target.value }))
                     }
-                  >
-                    <SelectTrigger className="h-9 text-sm bg-input border-border">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-card border-border">
-                      {(["High", "Medium", "Low"] as Priority[]).map((p) => (
-                        <SelectItem key={p} value={p} className="text-sm">
-                          <span className="flex items-center gap-2">
-                            <span
-                              className={`w-2 h-2 rounded-full ${PRIORITY_STYLES[p].dot}`}
-                            />
-                            {p}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    className="h-9 text-sm bg-input border-border"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Time row — AM/PM pickers */}
+                <div className="grid grid-cols-2 gap-3">
+                  <AmPmTimePicker
+                    value={form.startTime}
+                    onChange={(v) => setForm((f) => ({ ...f, startTime: v }))}
+                    label="Start Time"
+                  />
+                  <AmPmTimePicker
+                    value={form.endTime}
+                    onChange={(v) => setForm((f) => ({ ...f, endTime: v }))}
+                    label="End Time"
+                  />
+                </div>
+
+                {/* Auto duration */}
+                {duration > 0 && (
+                  <p className="text-xs text-primary font-medium -mt-2">
+                    Duration: {formatDuration(duration)}
+                  </p>
+                )}
+
+                {/* Subject + Priority row */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">
+                      Subject
+                    </Label>
+                    <Select
+                      value={subjectSelect}
+                      onValueChange={(v) => {
+                        setSubjectSelect(v);
+                        if (v !== "Other (custom)") {
+                          setForm((f) => ({ ...f, subject: v }));
+                          setCustomSubject("");
+                        } else {
+                          setForm((f) => ({
+                            ...f,
+                            subject: customSubject.trim(),
+                          }));
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-9 text-sm bg-input border-border">
+                        <SelectValue placeholder="Select subject" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card border-border">
+                        {SUBJECT_OPTIONS.map((s) => (
+                          <SelectItem key={s} value={s} className="text-sm">
+                            {s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {subjectSelect === "Other (custom)" && (
+                      <Input
+                        placeholder="Enter custom subject..."
+                        value={customSubject}
+                        onChange={(e) => {
+                          setCustomSubject(e.target.value);
+                          setForm((f) => ({
+                            ...f,
+                            subject: e.target.value.trim(),
+                          }));
+                        }}
+                        className="h-8 text-sm bg-input border-border mt-1"
+                        autoFocus
+                      />
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">
+                      Priority
+                    </Label>
+                    <Select
+                      value={form.priority}
+                      onValueChange={(v) =>
+                        setForm((f) => ({ ...f, priority: v as Priority }))
+                      }
+                    >
+                      <SelectTrigger className="h-9 text-sm bg-input border-border">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card border-border">
+                        {(["High", "Medium", "Low"] as Priority[]).map((p) => (
+                          <SelectItem key={p} value={p} className="text-sm">
+                            <span className="flex items-center gap-2">
+                              <span
+                                className={`w-2 h-2 rounded-full ${PRIORITY_STYLES[p].dot}`}
+                              />
+                              {p}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Notes */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Notes</Label>
+                  <Textarea
+                    placeholder="Optional notes for this task..."
+                    value={form.notes}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, notes: e.target.value }))
+                    }
+                    className="text-sm bg-input border-border resize-none"
+                    rows={2}
+                  />
                 </div>
               </div>
-
-              {/* Notes */}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Notes</Label>
-                <Textarea
-                  placeholder="Optional notes for this task..."
-                  value={form.notes}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, notes: e.target.value }))
-                  }
-                  className="text-sm bg-input border-border resize-none"
-                  rows={2}
-                />
-              </div>
-            </div>
+            </ScrollArea>
 
             <DialogFooter className="gap-2">
               <Button

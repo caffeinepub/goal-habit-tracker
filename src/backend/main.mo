@@ -1,16 +1,23 @@
 import Map "mo:core/Map";
-import Runtime "mo:core/Runtime";
 import Nat "mo:core/Nat";
 import Array "mo:core/Array";
 import Principal "mo:core/Principal";
-import MixinStorage "blob-storage/Mixin";
+import Runtime "mo:core/Runtime";
+import Iter "mo:core/Iter";
 import MixinAuthorization "authorization/MixinAuthorization";
 import AccessControl "authorization/access-control";
+import MixinStorage "blob-storage/Mixin";
 
 
+// Persistent state with upgrade migration.
 
 actor {
-  type Subject = {
+  let accessControlState = AccessControl.initState();
+  include MixinAuthorization(accessControlState);
+  include MixinStorage();
+
+  // Data types
+  public type Subject = {
     id : Nat;
     name : Text;
     description : Text;
@@ -18,28 +25,56 @@ actor {
     isWeak : Bool;
   };
 
-  type StudySession = {
+  public type MockTestScore = {
+    subject : Text;
+    score : Nat;
+    totalMarks : Nat;
+    date : Text;
+  };
+
+  public type StudySession = {
     subjectName : Text;
     hours : Float;
     date : Text;
   };
 
-  type SubjectQuestionProgress = {
+  public type SubjectQuestionProgress = {
     subjectName : Text;
     count : Nat;
   };
 
-  type MonthlyLogEntry = {
+  public type MonthlyLogEntry = {
     date : Text;
     count : Nat;
   };
 
-  type UserData = {
+  type Section = {
+    #studyplan;
+    #questions;
+    #dailyroutine;
+  };
+
+  type SectionTimeLog = {
+    section : Section;
+    date : Text;
+    elapsedSeconds : Nat;
+  };
+
+  type SectionPlanCycle = {
+    section : Section;
+    startDate : Text;
+    endDate : Text;
+    summary : Nat;
+  };
+
+  public type UserData = {
     subjects : [Subject];
-    mockScores : [Nat];
+    mockScores : [MockTestScore];
     studySessions : [StudySession];
     questionProgress : [SubjectQuestionProgress];
     monthlyLogs : [MonthlyLogEntry];
+    sectionTimes : [SectionTimeLog];
+    planCycles : [SectionPlanCycle];
   };
 
   public type UserProfile = {
@@ -58,7 +93,7 @@ actor {
     planTotalDays : Nat;
   };
 
-  type Question = {
+  public type Question = {
     id : Nat;
     subject : Text;
     questionText : Text;
@@ -69,7 +104,7 @@ actor {
     createdAt : Text;
   };
 
-  type ExamSession = {
+  public type ExamSession = {
     id : Nat;
     subject : Text;
     totalQuestions : Nat;
@@ -79,7 +114,7 @@ actor {
     completedAt : Text;
   };
 
-  type NotebookEntry = {
+  public type NotebookEntry = {
     id : Nat;
     subject : Text;
     title : Text;
@@ -88,7 +123,7 @@ actor {
     updatedAt : Text;
   };
 
-  type NotepadEntry = {
+  public type NotepadEntry = {
     id : Nat;
     subject : Text;
     content : Text;
@@ -96,7 +131,7 @@ actor {
     updatedAt : Text;
   };
 
-  type UserEntries = {
+  public type UserEntries = {
     nextQuestionId : Nat;
     nextExamSessionId : Nat;
     nextNotebookEntryId : Nat;
@@ -107,7 +142,7 @@ actor {
     notepadEntries : [NotepadEntry];
   };
 
-  type FileMetadata = {
+  public type FileMetadata = {
     id : Nat;
     fileName : Text;
     mimeType : Text;
@@ -116,14 +151,10 @@ actor {
     uploadedAt : Text;
   };
 
-  type FileMetadataStore = {
+  public type FileMetadataStore = {
     nextFileId : Nat;
     files : [FileMetadata];
   };
-
-  let accessControlState = AccessControl.initState();
-  include MixinAuthorization(accessControlState);
-  include MixinStorage();
 
   // Persistent stores
   let nextSubjectIdStore = Map.empty<Principal, Nat>();
@@ -132,13 +163,13 @@ actor {
   let userTargetsStore = Map.empty<Principal, UserTargets>();
   let userEntriesStore = Map.empty<Principal, UserEntries>();
   let fileMetadataStore = Map.empty<Principal, FileMetadataStore>();
+  let customSubjectsStore = Map.empty<Principal, [Text]>();
 
   // Authentication helper functions
   func ensureUserRegistered(caller : Principal) {
     if (caller.isAnonymous()) {
       Runtime.trap("Unauthorized: Anonymous users cannot access this resource");
     };
-
     let currentRole = AccessControl.getUserRole(accessControlState, caller);
     switch (currentRole) {
       case (#guest) {
@@ -185,6 +216,8 @@ actor {
           studySessions = [];
           questionProgress = [];
           monthlyLogs = [];
+          sectionTimes = [];
+          planCycles = [];
         };
         userDataStore.add(p, newData);
         newData;
@@ -217,9 +250,7 @@ actor {
     ];
   };
 
-  // Main application logic
-
-  // User Profile Functions
+  // User Profile & Target Functions
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
     requireUserPermission(caller);
     userProfiles.get(caller);
@@ -262,6 +293,7 @@ actor {
     userTargetsStore.add(caller, newTargets);
   };
 
+  // Subject Functions
   public query ({ caller }) func getSubjects() : async [Subject] {
     requireUserPermission(caller);
     getOrCreateUserData(caller).subjects;
@@ -328,18 +360,42 @@ actor {
     userDataStore.add(caller, { userData with subjects = toggledSubjects });
   };
 
-  public query ({ caller }) func getMockScores() : async [Nat] {
+  // Custom Subjects Functions
+  public shared ({ caller }) func setCustomSubjects(subjects : [Text]) : async () {
+    requireUserPermission(caller);
+    customSubjectsStore.add(caller, subjects);
+  };
+
+  public query ({ caller }) func getCustomSubjects() : async [Text] {
+    requireUserPermission(caller);
+    switch (customSubjectsStore.get(caller)) {
+      case (null) { [] };
+      case (?subjects) { subjects };
+    };
+  };
+
+  // Mock Test Scores Functions
+  public query ({ caller }) func getMockScores() : async [MockTestScore] {
     requireUserPermission(caller);
     getOrCreateUserData(caller).mockScores;
   };
 
-  public shared ({ caller }) func addMockScore(score : Nat) : async () {
+  public shared ({ caller }) func addMockScore(subject : Text, score : Nat, totalMarks : Nat, date : Text) : async () {
     requireUserPermission(caller);
     let userData = getOrCreateUserData(caller);
-    let updatedScores = userData.mockScores.concat([score]);
+
+    let newScore : MockTestScore = {
+      subject;
+      score;
+      totalMarks;
+      date;
+    };
+
+    let updatedScores = userData.mockScores.concat([newScore]);
     userDataStore.add(caller, { userData with mockScores = updatedScores });
   };
 
+  // Study Sessions Functions
   public shared ({ caller }) func addStudySession(subjectName : Text, hours : Float, date : Text) : async () {
     requireUserPermission(caller);
     let userData = getOrCreateUserData(caller);
@@ -460,6 +516,60 @@ actor {
     getOrCreateUserData(caller).monthlyLogs;
   };
 
+  // Section Time Logs
+  public shared ({ caller }) func saveSectionTimeLog(section : Section, date : Text, elapsedSeconds : Nat) : async () {
+    requireUserPermission(caller);
+    let userData = getOrCreateUserData(caller);
+
+    let filteredLogs = userData.sectionTimes.filter(
+      func(log) {
+        not (log.section == section and log.date == date);
+      }
+    );
+
+    let newLog : SectionTimeLog = {
+      section;
+      date;
+      elapsedSeconds;
+    };
+
+    let updatedLogs = filteredLogs.concat([newLog]);
+    userDataStore.add(caller, { userData with sectionTimes = updatedLogs });
+  };
+
+  public query ({ caller }) func getSectionTimeLogs() : async [SectionTimeLog] {
+    requireUserPermission(caller);
+    getOrCreateUserData(caller).sectionTimes;
+  };
+
+  // Plan Cycle Archives
+  public shared ({ caller }) func savePlanCycle(section : Section, startDate : Text, endDate : Text, summary : Nat) : async () {
+    requireUserPermission(caller);
+    let userData = getOrCreateUserData(caller);
+
+    let filteredCycles = userData.planCycles.filter(
+      func(cycle) {
+        not (cycle.section == section and cycle.startDate == startDate and cycle.endDate == endDate);
+      }
+    );
+
+    let newCycle : SectionPlanCycle = {
+      section;
+      startDate;
+      endDate;
+      summary;
+    };
+
+    let updatedCycles = filteredCycles.concat([newCycle]);
+    userDataStore.add(caller, { userData with planCycles = updatedCycles });
+  };
+
+  public query ({ caller }) func getPlanCycles() : async [SectionPlanCycle] {
+    requireUserPermission(caller);
+    getOrCreateUserData(caller).planCycles;
+  };
+
+  // Question and Exam Functions
   public shared ({ caller }) func addQuestion(
     subject : Text,
     questionText : Text,
@@ -553,6 +663,7 @@ actor {
     getOrCreateUserEntries(caller).examSessions;
   };
 
+  // Notebook and Notepad Functions
   public shared ({ caller }) func addNotebookEntry(
     subject : Text,
     title : Text,
@@ -670,7 +781,6 @@ actor {
   };
 
   // File Metadata Functions
-
   public shared ({ caller }) func saveFileMetadata(
     fileName : Text,
     mimeType : Text,

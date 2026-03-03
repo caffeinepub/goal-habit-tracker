@@ -1,6 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import type { MockTestScore } from "./backend.d";
 import AddSubjectTab from "./components/AddSubjectTab";
 import AnalyticsTab from "./components/AnalyticsTab";
 import AppearancePanel, {
@@ -170,10 +171,44 @@ export default function App() {
   );
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // ─── Section timer sync state ────────────────────────────────────────────
+  const [activeSectionTimer, setActiveSectionTimer] = useState<{
+    label: string;
+    secs: number;
+    running: boolean;
+  } | null>(null);
+
+  const handleSectionTimerStart = useCallback((label: string, secs: number) => {
+    setActiveSectionTimer({ label, secs, running: true });
+    // One-way: start Pomodoro if it's not running and mode is "work"
+    setTimerRunning((current) => {
+      if (!current) return true;
+      return current;
+    });
+  }, []);
+
+  const handleSectionTimerPause = useCallback(() => {
+    setActiveSectionTimer((prev) =>
+      prev ? { ...prev, running: false } : null,
+    );
+    // One-way: pause Pomodoro
+    setTimerRunning(false);
+  }, []);
+
+  const handleSectionTimerUpdate = useCallback(
+    (label: string, secs: number, running: boolean) => {
+      setActiveSectionTimer({ label, secs, running });
+    },
+    [],
+  );
+
   // ─── Backend data ──────────────────────────────────────────────────────────
   const { data: subjects = [], isLoading: subjectsLoading } = useGetSubjects();
-  const { data: mockScores = [], isLoading: scoresLoading } =
+  const { data: mockScoresRaw = [], isLoading: scoresLoading } =
     useGetMockScores();
+
+  // Derive a MockTestScore[] typed variable
+  const mockScores: MockTestScore[] = mockScoresRaw as MockTestScore[];
 
   // ─── Derived values ────────────────────────────────────────────────────────
   const overallCompletion =
@@ -190,7 +225,7 @@ export default function App() {
     mockScores.length === 0
       ? 0
       : Math.round(
-          mockScores.reduce((acc, s) => acc + Number(s), 0) /
+          mockScores.reduce((acc, s) => acc + Number(s.score), 0) /
             mockScores.length +
             overallCompletion / 10,
         );
@@ -350,7 +385,7 @@ export default function App() {
         {activeTab === "add" && <AddSubjectTab />}
         {activeTab === "analytics" && (
           <AnalyticsTab
-            mockScores={mockScores}
+            mockScores={mockScores.map((s) => s.score)}
             isLoading={scoresLoading}
             overallCompletion={overallCompletion}
             predictedScore={predictedScore}
@@ -370,8 +405,20 @@ export default function App() {
             onSetDefault={handleSetDefault}
           />
         )}
-        {activeTab === "studyplan" && <StudyPlanTab />}
-        {activeTab === "questions" && <QuestionsTab />}
+        {activeTab === "studyplan" && (
+          <StudyPlanTab
+            onSectionTimerStart={handleSectionTimerStart}
+            onSectionTimerPause={handleSectionTimerPause}
+            onSectionTimerUpdate={handleSectionTimerUpdate}
+          />
+        )}
+        {activeTab === "questions" && (
+          <QuestionsTab
+            onSectionTimerStart={handleSectionTimerStart}
+            onSectionTimerPause={handleSectionTimerPause}
+            onSectionTimerUpdate={handleSectionTimerUpdate}
+          />
+        )}
         {activeTab === "exam" && <ExamTab />}
         {activeTab === "notebook" && <NotebookTab />}
         {activeTab === "notepad" && <NotepadTab />}
@@ -390,6 +437,9 @@ export default function App() {
         activeTab={activeTab}
         onToggleRunning={handleTimerToggle}
         onGoToTimer={() => setActiveTab("timer")}
+        sectionTimerLabel={activeSectionTimer?.label}
+        sectionTimerSecs={activeSectionTimer?.secs}
+        sectionTimerRunning={activeSectionTimer?.running}
       />
 
       <Toaster

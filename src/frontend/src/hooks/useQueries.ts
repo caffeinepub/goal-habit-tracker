@@ -1,5 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Subject, SubjectTarget, UserTargets } from "../backend.d";
+import type {
+  MockTestScore,
+  Section,
+  Subject,
+  SubjectTarget,
+  UserTargets,
+} from "../backend.d";
 import { useActor } from "./useActor";
 
 const DEFAULT_TARGETS: UserTargets = {
@@ -75,11 +81,132 @@ export function useGetSubjects() {
 
 export function useGetMockScores() {
   const { actor, isFetching } = useActor();
-  return useQuery<bigint[]>({
+  return useQuery<MockTestScore[]>({
     queryKey: ["mockScores"],
     queryFn: async () => {
       if (!actor) return [];
       return actor.getMockScores();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useAddMockScoreFull() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      subject,
+      score,
+      totalMarks,
+      date,
+    }: {
+      subject: string;
+      score: number;
+      totalMarks: number;
+      date: string;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      return actor.addMockScore(
+        subject,
+        BigInt(score),
+        BigInt(totalMarks),
+        date,
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["mockScores"] });
+    },
+  });
+}
+
+export function useGetCustomSubjects() {
+  const { actor, isFetching } = useActor();
+  return useQuery<string[]>({
+    queryKey: ["customSubjects"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getCustomSubjects();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useSetCustomSubjects() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (subjects: string[]) => {
+      if (!actor) throw new Error("No actor");
+      return actor.setCustomSubjects(subjects);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customSubjects"] });
+    },
+  });
+}
+
+export function useSaveSectionTimeLog() {
+  const { actor } = useActor();
+  return useMutation({
+    mutationFn: async ({
+      section,
+      date,
+      elapsedSeconds,
+    }: {
+      section: Section;
+      date: string;
+      elapsedSeconds: number;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      return actor.saveSectionTimeLog(section, date, BigInt(elapsedSeconds));
+    },
+  });
+}
+
+export function useGetSectionTimeLogs() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["sectionTimeLogs"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getSectionTimeLogs();
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useSavePlanCycle() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      section,
+      startDate,
+      endDate,
+      summary,
+    }: {
+      section: Section;
+      startDate: string;
+      endDate: string;
+      summary: number;
+    }) => {
+      if (!actor) throw new Error("No actor");
+      return actor.savePlanCycle(section, startDate, endDate, BigInt(summary));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["planCycles"] });
+    },
+  });
+}
+
+export function useGetPlanCycles() {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["planCycles"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getPlanCycles();
     },
     enabled: !!actor && !isFetching,
   });
@@ -145,7 +272,8 @@ export function useAddMockScore() {
   return useMutation({
     mutationFn: async (score: number) => {
       if (!actor) throw new Error("No actor");
-      return actor.addMockScore(BigInt(score));
+      const today = new Date().toISOString().split("T")[0];
+      return actor.addMockScore("General", BigInt(score), BigInt(200), today);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["mockScores"] });

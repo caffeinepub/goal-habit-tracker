@@ -12,6 +12,9 @@ interface FloatingTimerWidgetProps {
   activeTab: TabId;
   onToggleRunning: () => void;
   onGoToTimer: () => void;
+  sectionTimerLabel?: string;
+  sectionTimerSecs?: number;
+  sectionTimerRunning?: boolean;
 }
 
 const MODE_CONFIG: Record<TimerMode, { label: string; color: string }> = {
@@ -42,11 +45,26 @@ export default function FloatingTimerWidget({
   activeTab,
   onToggleRunning,
   onGoToTimer,
+  sectionTimerLabel,
+  sectionTimerSecs,
+  sectionTimerRunning,
 }: FloatingTimerWidgetProps) {
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
   const timeStr = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   const { label, color } = MODE_CONFIG[mode];
+
+  // Section timer display
+  const hasSectionTimer =
+    sectionTimerRunning && sectionTimerLabel && sectionTimerSecs !== undefined;
+  const sectionMins =
+    sectionTimerSecs !== undefined ? Math.floor(sectionTimerSecs / 60) : 0;
+  const sectionSecs =
+    sectionTimerSecs !== undefined ? sectionTimerSecs % 60 : 0;
+  const sectionTimeStr = `${String(sectionMins).padStart(2, "0")}:${String(sectionSecs).padStart(2, "0")}`;
+
+  // Show widget if: not on timer tab, OR section timer is running
+  const shouldShow = activeTab !== "timer" || hasSectionTimer;
 
   // ── Drag state ─────────────────────────────────────────────────────────────
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
@@ -179,7 +197,7 @@ export default function FloatingTimerWidget({
 
   return (
     <AnimatePresence>
-      {activeTab !== "timer" && (
+      {shouldShow && (
         <motion.div
           key="floating-timer"
           initial={{ opacity: 0, scale: 0.9 }}
@@ -222,7 +240,7 @@ export default function FloatingTimerWidget({
             <button
               type="button"
               onClick={handleGoToTimer}
-              className="flex flex-col items-start gap-0.5 min-w-0 cursor-pointer group py-3 flex-1"
+              className="flex flex-col items-start gap-0.5 min-w-0 cursor-pointer group py-2.5 flex-1"
               aria-label="Go to timer"
             >
               <div className="flex items-center gap-1.5">
@@ -241,6 +259,15 @@ export default function FloatingTimerWidget({
               >
                 {timeStr}
               </span>
+              {/* Section timer row */}
+              {hasSectionTimer && (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                  <span className="text-[9px] text-emerald-400 font-mono font-semibold truncate max-w-[110px]">
+                    {sectionTimerLabel} – {sectionTimeStr}
+                  </span>
+                </div>
+              )}
             </button>
 
             {/* Play/Pause button */}

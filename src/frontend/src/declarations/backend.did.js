@@ -42,6 +42,12 @@ export const ExamSession = IDL.Record({
   'totalQuestions' : IDL.Nat,
   'correctAnswers' : IDL.Nat,
 });
+export const MockTestScore = IDL.Record({
+  'totalMarks' : IDL.Nat,
+  'subject' : IDL.Text,
+  'date' : IDL.Text,
+  'score' : IDL.Nat,
+});
 export const MonthlyLogEntry = IDL.Record({
   'date' : IDL.Text,
   'count' : IDL.Nat,
@@ -61,6 +67,17 @@ export const NotepadEntry = IDL.Record({
   'createdAt' : IDL.Text,
   'updatedAt' : IDL.Text,
 });
+export const Section = IDL.Variant({
+  'studyplan' : IDL.Null,
+  'questions' : IDL.Null,
+  'dailyroutine' : IDL.Null,
+});
+export const SectionPlanCycle = IDL.Record({
+  'endDate' : IDL.Text,
+  'section' : Section,
+  'summary' : IDL.Nat,
+  'startDate' : IDL.Text,
+});
 export const SubjectQuestionProgress = IDL.Record({
   'subjectName' : IDL.Text,
   'count' : IDL.Nat,
@@ -74,6 +91,11 @@ export const Question = IDL.Record({
   'questionText' : IDL.Text,
   'questionType' : IDL.Text,
   'options' : IDL.Vec(IDL.Text),
+});
+export const SectionTimeLog = IDL.Record({
+  'date' : IDL.Text,
+  'section' : Section,
+  'elapsedSeconds' : IDL.Nat,
 });
 export const StudySession = IDL.Record({
   'hours' : IDL.Float64,
@@ -126,7 +148,7 @@ export const idlService = IDL.Service({
     ),
   '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
-  'addMockScore' : IDL.Func([IDL.Nat], [], []),
+  'addMockScore' : IDL.Func([IDL.Text, IDL.Nat, IDL.Nat, IDL.Text], [], []),
   'addNotebookEntry' : IDL.Func(
       [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
       [],
@@ -158,11 +180,13 @@ export const idlService = IDL.Service({
   'getAllFileMetadata' : IDL.Func([], [IDL.Vec(FileMetadata)], ['query']),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+  'getCustomSubjects' : IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
   'getExamSessions' : IDL.Func([], [IDL.Vec(ExamSession)], ['query']),
-  'getMockScores' : IDL.Func([], [IDL.Vec(IDL.Nat)], ['query']),
+  'getMockScores' : IDL.Func([], [IDL.Vec(MockTestScore)], ['query']),
   'getMonthlyLogs' : IDL.Func([], [IDL.Vec(MonthlyLogEntry)], ['query']),
   'getNotebookEntries' : IDL.Func([], [IDL.Vec(NotebookEntry)], ['query']),
   'getNotepadEntries' : IDL.Func([], [IDL.Vec(NotepadEntry)], ['query']),
+  'getPlanCycles' : IDL.Func([], [IDL.Vec(SectionPlanCycle)], ['query']),
   'getQuestionProgress' : IDL.Func(
       [],
       [IDL.Vec(SubjectQuestionProgress)],
@@ -174,6 +198,7 @@ export const idlService = IDL.Service({
       [IDL.Vec(Question)],
       ['query'],
     ),
+  'getSectionTimeLogs' : IDL.Func([], [IDL.Vec(SectionTimeLog)], ['query']),
   'getStudySessions' : IDL.Func([], [IDL.Vec(StudySession)], ['query']),
   'getSubjects' : IDL.Func([], [IDL.Vec(Subject)], ['query']),
   'getTargets' : IDL.Func([], [UserTargets], ['query']),
@@ -195,6 +220,9 @@ export const idlService = IDL.Service({
       [],
     ),
   'saveMonthlyLog' : IDL.Func([IDL.Text, IDL.Nat], [], []),
+  'savePlanCycle' : IDL.Func([Section, IDL.Text, IDL.Text, IDL.Nat], [], []),
+  'saveSectionTimeLog' : IDL.Func([Section, IDL.Text, IDL.Nat], [], []),
+  'setCustomSubjects' : IDL.Func([IDL.Vec(IDL.Text)], [], []),
   'setQuestionCount' : IDL.Func([IDL.Text, IDL.Nat], [], []),
   'setStudySession' : IDL.Func([IDL.Text, IDL.Float64, IDL.Text], [], []),
   'setTargets' : IDL.Func(
@@ -248,6 +276,12 @@ export const idlFactory = ({ IDL }) => {
     'totalQuestions' : IDL.Nat,
     'correctAnswers' : IDL.Nat,
   });
+  const MockTestScore = IDL.Record({
+    'totalMarks' : IDL.Nat,
+    'subject' : IDL.Text,
+    'date' : IDL.Text,
+    'score' : IDL.Nat,
+  });
   const MonthlyLogEntry = IDL.Record({ 'date' : IDL.Text, 'count' : IDL.Nat });
   const NotebookEntry = IDL.Record({
     'id' : IDL.Nat,
@@ -264,6 +298,17 @@ export const idlFactory = ({ IDL }) => {
     'createdAt' : IDL.Text,
     'updatedAt' : IDL.Text,
   });
+  const Section = IDL.Variant({
+    'studyplan' : IDL.Null,
+    'questions' : IDL.Null,
+    'dailyroutine' : IDL.Null,
+  });
+  const SectionPlanCycle = IDL.Record({
+    'endDate' : IDL.Text,
+    'section' : Section,
+    'summary' : IDL.Nat,
+    'startDate' : IDL.Text,
+  });
   const SubjectQuestionProgress = IDL.Record({
     'subjectName' : IDL.Text,
     'count' : IDL.Nat,
@@ -277,6 +322,11 @@ export const idlFactory = ({ IDL }) => {
     'questionText' : IDL.Text,
     'questionType' : IDL.Text,
     'options' : IDL.Vec(IDL.Text),
+  });
+  const SectionTimeLog = IDL.Record({
+    'date' : IDL.Text,
+    'section' : Section,
+    'elapsedSeconds' : IDL.Nat,
   });
   const StudySession = IDL.Record({
     'hours' : IDL.Float64,
@@ -326,7 +376,7 @@ export const idlFactory = ({ IDL }) => {
       ),
     '_caffeineStorageUpdateGatewayPrincipals' : IDL.Func([], [], []),
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
-    'addMockScore' : IDL.Func([IDL.Nat], [], []),
+    'addMockScore' : IDL.Func([IDL.Text, IDL.Nat, IDL.Nat, IDL.Text], [], []),
     'addNotebookEntry' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
         [],
@@ -358,11 +408,13 @@ export const idlFactory = ({ IDL }) => {
     'getAllFileMetadata' : IDL.Func([], [IDL.Vec(FileMetadata)], ['query']),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
+    'getCustomSubjects' : IDL.Func([], [IDL.Vec(IDL.Text)], ['query']),
     'getExamSessions' : IDL.Func([], [IDL.Vec(ExamSession)], ['query']),
-    'getMockScores' : IDL.Func([], [IDL.Vec(IDL.Nat)], ['query']),
+    'getMockScores' : IDL.Func([], [IDL.Vec(MockTestScore)], ['query']),
     'getMonthlyLogs' : IDL.Func([], [IDL.Vec(MonthlyLogEntry)], ['query']),
     'getNotebookEntries' : IDL.Func([], [IDL.Vec(NotebookEntry)], ['query']),
     'getNotepadEntries' : IDL.Func([], [IDL.Vec(NotepadEntry)], ['query']),
+    'getPlanCycles' : IDL.Func([], [IDL.Vec(SectionPlanCycle)], ['query']),
     'getQuestionProgress' : IDL.Func(
         [],
         [IDL.Vec(SubjectQuestionProgress)],
@@ -374,6 +426,7 @@ export const idlFactory = ({ IDL }) => {
         [IDL.Vec(Question)],
         ['query'],
       ),
+    'getSectionTimeLogs' : IDL.Func([], [IDL.Vec(SectionTimeLog)], ['query']),
     'getStudySessions' : IDL.Func([], [IDL.Vec(StudySession)], ['query']),
     'getSubjects' : IDL.Func([], [IDL.Vec(Subject)], ['query']),
     'getTargets' : IDL.Func([], [UserTargets], ['query']),
@@ -395,6 +448,9 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'saveMonthlyLog' : IDL.Func([IDL.Text, IDL.Nat], [], []),
+    'savePlanCycle' : IDL.Func([Section, IDL.Text, IDL.Text, IDL.Nat], [], []),
+    'saveSectionTimeLog' : IDL.Func([Section, IDL.Text, IDL.Nat], [], []),
+    'setCustomSubjects' : IDL.Func([IDL.Vec(IDL.Text)], [], []),
     'setQuestionCount' : IDL.Func([IDL.Text, IDL.Nat], [], []),
     'setStudySession' : IDL.Func([IDL.Text, IDL.Float64, IDL.Text], [], []),
     'setTargets' : IDL.Func(

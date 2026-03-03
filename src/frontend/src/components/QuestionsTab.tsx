@@ -1,9 +1,16 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -13,11 +20,20 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   Award,
   BookOpen,
   CheckCircle2,
   Clock,
   Flame,
+  History,
   Pause,
   Play,
   PlusCircle,
@@ -31,14 +47,70 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { SubjectQuestionProgress } from "../backend.d";
+import type { Section, SubjectQuestionProgress } from "../backend.d";
 import {
+  useGetPlanCycles,
   useGetQuestionProgress,
   useGetTargets,
+  useSavePlanCycle,
+  useSaveSectionTimeLog,
   useSetQuestionCount,
 } from "../hooks/useQueries";
 import MonthlyPlanSection from "./MonthlyPlanSection";
 import TargetsPanel from "./TargetsPanel";
+
+// ── localStorage helpers for timer persistence ────────────────────────────
+const Q_TIMER_KEY = "ssc_questions_timer_state";
+const Q_SECTION_TIME_PREFIX = "ssc_section_time_questions_";
+const Q_CYCLE_KEY = "ssc_cycle_start_questions";
+
+interface QTimerState {
+  subject: string;
+  countInput: string;
+  timerSecs: number;
+  timerInitial: number;
+  running: boolean;
+  savedAt: number;
+  elapsedSecs: number;
+}
+
+function loadQTimerState(): QTimerState | null {
+  try {
+    const s = localStorage.getItem(Q_TIMER_KEY);
+    return s ? JSON.parse(s) : null;
+  } catch {
+    return null;
+  }
+}
+
+function getQSectionTimeToday(): number {
+  const today = new Date().toISOString().split("T")[0];
+  const key = Q_SECTION_TIME_PREFIX + today;
+  return Number(localStorage.getItem(key) ?? 0);
+}
+
+function addQSectionTimeToday(secs: number) {
+  const today = new Date().toISOString().split("T")[0];
+  const key = Q_SECTION_TIME_PREFIX + today;
+  const current = Number(localStorage.getItem(key) ?? 0);
+  localStorage.setItem(key, String(current + secs));
+}
+
+function daysDiffQ(from: string, to: string): number {
+  const a = new Date(from);
+  const b = new Date(to);
+  return Math.floor((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+interface QuestionsTabProps {
+  onSectionTimerStart?: (label: string, secs: number) => void;
+  onSectionTimerPause?: () => void;
+  onSectionTimerUpdate?: (
+    label: string,
+    secs: number,
+    running: boolean,
+  ) => void;
+}
 
 const SUBJECT_DISPLAY: Record<
   string,
@@ -169,10 +241,55 @@ function CircularProgressBig({ total, goal }: CircularProgressBigProps) {
 
 type SaveStatus = "idle" | "saving" | "saved";
 
-export default function QuestionsTab() {
+export default function QuestionsTab({
+  onSectionTimerStart,
+  onSectionTimerPause,
+  onSectionTimerUpdate,
+}: QuestionsTabProps) {
   const { data: rawProgress = [], isLoading } = useGetQuestionProgress();
   const { data: targets } = useGetTargets();
+  const { data: planCycles = [] } = useGetPlanCycles();
   const setQuestionCount = useSetQuestionCount();
+  const savePlanCycleMutation = useSavePlanCycle();
+  const saveSectionTimeLog = useSaveSectionTimeLog();
+
+  const today = new Date().toISOString().split("T")[0];
+
+  // ── 30-day cycle ─────────────────────────────────────────────────────────
+  const [cycleStart, setCycleStart] = useState<string>(() => {
+    return localStorage.getItem(Q_CYCLE_KEY) ?? today;
+  });
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const savePlanCycleMutateRef = useRef(savePlanCycleMutation.mutate);
+  savePlanCycleMutateRef.current = savePlanCycleMutation.mutate;
+  const saveSectionTimeLogMutateRef = useRef(saveSectionTimeLog.mutate);
+  saveSectionTimeLogMutateRef.current = saveSectionTimeLog.mutate;
+
+  const dayOfCycle = Math.min(daysDiffQ(cycleStart, today) + 1, 30);
+
+  useEffect(() => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const savedCycleStart = localStorage.getItem(Q_CYCLE_KEY);
+    if (!savedCycleStart) {
+      localStorage.setItem(Q_CYCLE_KEY, todayStr);
+      setCycleStart(todayStr);
+    } else {
+      const diff = daysDiffQ(savedCycleStart, todayStr);
+      if (diff >= 30) {
+        savePlanCycleMutateRef.current({
+          section: "questions" as Section,
+          startDate: savedCycleStart,
+          endDate: todayStr,
+          summary: diff,
+        });
+        localStorage.setItem(Q_CYCLE_KEY, todayStr);
+        setCycleStart(todayStr);
+      }
+    }
+  }, []);
+
+  // Filter cycles for questions section
+  const questionCycles = planCycles.filter((c) => c.section === "questions");
 
   const TOTAL_GOAL = Number(targets?.totalQuestionsGoal ?? 9000);
 
@@ -224,47 +341,144 @@ export default function QuestionsTab() {
     { label: "5m", secs: 300 },
   ];
 
-  // ── Subject question countdown timer (local only) ─────────────────────────
+  // ── Subject question countdown timer (with persistence) ──────────────────
   const [qTimerSecs, setQTimerSecs] = useState(0);
   const [qTimerRunning, setQTimerRunning] = useState(false);
   const [qTimerInitial, setQTimerInitial] = useState(0);
   const qTimerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qElapsedRef = useRef(0);
+
+  // Restore timer state from localStorage on mount
+  useEffect(() => {
+    const saved = loadQTimerState();
+    if (saved?.subject && saved.timerInitial > 0) {
+      const elapsed = Math.floor((Date.now() - saved.savedAt) / 1000);
+      const restored = saved.running
+        ? Math.max(0, saved.timerSecs - elapsed)
+        : saved.timerSecs;
+
+      setSubject(saved.subject);
+      setCountInput(saved.countInput);
+      setQTimerSecs(restored);
+      setQTimerInitial(saved.timerInitial);
+      qElapsedRef.current = saved.running
+        ? saved.elapsedSecs + elapsed
+        : saved.elapsedSecs;
+
+      if (saved.running && restored > 0) {
+        setQTimerRunning(true);
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveQTimerState = useCallback(
+    (
+      sub: string,
+      cnt: string,
+      secs: number,
+      initial: number,
+      running: boolean,
+      elapsed: number,
+    ) => {
+      const state: QTimerState = {
+        subject: sub,
+        countInput: cnt,
+        timerSecs: secs,
+        timerInitial: initial,
+        running,
+        savedAt: Date.now(),
+        elapsedSecs: elapsed,
+      };
+      localStorage.setItem(Q_TIMER_KEY, JSON.stringify(state));
+    },
+    [],
+  );
+
+  const isFirstQMount = useRef(true);
 
   // Reset timer when subject, count, or per-question time change
   useEffect(() => {
+    if (isFirstQMount.current) {
+      isFirstQMount.current = false;
+      return;
+    }
     setQTimerRunning(false);
     if (qTimerIntervalRef.current) clearInterval(qTimerIntervalRef.current);
     const n = Number.parseInt(countInput, 10);
     if (subject && !Number.isNaN(n) && n > 0) {
-      const secs = n * perQTimeSecs; // per-question time * count
+      const secs = n * perQTimeSecs;
       setQTimerSecs(secs);
       setQTimerInitial(secs);
+      saveQTimerState(subject, countInput, secs, secs, false, 0);
     } else {
       setQTimerSecs(0);
       setQTimerInitial(0);
     }
-  }, [subject, countInput, perQTimeSecs]);
+  }, [subject, countInput, perQTimeSecs, saveQTimerState]);
 
-  // Countdown tick
+  // Countdown tick with persistence and section time tracking
   useEffect(() => {
     if (qTimerRunning) {
       qTimerIntervalRef.current = setInterval(() => {
+        qElapsedRef.current += 1;
+        addQSectionTimeToday(1);
+        onSectionTimerUpdate?.(subject, qTimerSecs, true);
         setQTimerSecs((s) => {
+          const next = s <= 1 ? 0 : s - 1;
           if (s <= 1) {
             setQTimerRunning(false);
             toast.success("Question session complete!");
-            return 0;
+            onSectionTimerPause?.();
           }
-          return s - 1;
+          saveQTimerState(
+            subject,
+            countInput,
+            next,
+            qTimerInitial,
+            s > 1,
+            qElapsedRef.current,
+          );
+          return next;
         });
       }, 1000);
     } else {
       if (qTimerIntervalRef.current) clearInterval(qTimerIntervalRef.current);
+      saveQTimerState(
+        subject,
+        countInput,
+        qTimerSecs,
+        qTimerInitial,
+        false,
+        qElapsedRef.current,
+      );
     }
     return () => {
       if (qTimerIntervalRef.current) clearInterval(qTimerIntervalRef.current);
     };
-  }, [qTimerRunning]);
+  }, [
+    qTimerRunning,
+    subject,
+    countInput,
+    qTimerInitial,
+    qTimerSecs,
+    saveQTimerState,
+    onSectionTimerPause,
+    onSectionTimerUpdate,
+  ]);
+
+  // Save section time log to backend on unmount
+  useEffect(() => {
+    return () => {
+      const elapsed = getQSectionTimeToday();
+      if (elapsed > 0) {
+        saveSectionTimeLogMutateRef.current({
+          section: "questions" as Section,
+          date: new Date().toISOString().split("T")[0],
+          elapsedSeconds: elapsed,
+        });
+      }
+    };
+  }, []);
 
   const qTimerMins = Math.floor(qTimerSecs / 60);
   const qTimerRemSecs = qTimerSecs % 60;
@@ -363,7 +577,20 @@ export default function QuestionsTab() {
           <h2 className="font-display text-2xl font-bold text-foreground">
             {TOTAL_GOAL.toLocaleString()} Questions Challenge
           </h2>
-          <div className="ml-auto">
+          <Badge className="bg-blue-500/15 text-blue-400 border-blue-500/30 text-xs font-mono">
+            Day {dayOfCycle} / 30
+          </Badge>
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1 border-border text-muted-foreground hover:text-foreground"
+              onClick={() => setHistoryOpen(true)}
+              title="View previous 30-day cycles"
+            >
+              <History size={12} />
+              History
+            </Button>
             <TargetsPanel />
           </div>
         </div>
@@ -665,7 +892,17 @@ export default function QuestionsTab() {
                         size="sm"
                         variant="outline"
                         className="flex-1 h-7 text-xs gap-1"
-                        onClick={() => setQTimerRunning((r) => !r)}
+                        onClick={() => {
+                          setQTimerRunning((r) => {
+                            const next = !r;
+                            if (next) {
+                              onSectionTimerStart?.(subject, qTimerSecs);
+                            } else {
+                              onSectionTimerPause?.();
+                            }
+                            return next;
+                          });
+                        }}
                       >
                         {qTimerRunning ? (
                           <>
@@ -685,6 +922,7 @@ export default function QuestionsTab() {
                         className="h-7 text-xs px-2 text-muted-foreground"
                         onClick={() => {
                           setQTimerRunning(false);
+                          onSectionTimerPause?.();
                           setQTimerSecs(qTimerInitial);
                         }}
                       >
@@ -820,6 +1058,50 @@ export default function QuestionsTab() {
           </a>
         </p>
       </div>
+
+      {/* History Dialog */}
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent className="max-w-lg bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <History size={16} className="text-primary" />
+              Previous 30-Day Question Cycles
+            </DialogTitle>
+          </DialogHeader>
+          {questionCycles.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">
+              No archived cycles yet. Data will appear here after 30 days.
+            </p>
+          ) : (
+            <ScrollArea className="max-h-80">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Start</TableHead>
+                    <TableHead>End</TableHead>
+                    <TableHead className="text-right">Days</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {questionCycles.map((cycle, i) => (
+                    <TableRow key={`${cycle.startDate}-${i}`}>
+                      <TableCell className="font-mono text-xs">
+                        {cycle.startDate}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {cycle.endDate}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs text-primary font-bold">
+                        {Number(cycle.summary)}d
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
