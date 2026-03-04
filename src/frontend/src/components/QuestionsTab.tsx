@@ -35,6 +35,7 @@ import {
   Flame,
   History,
   Pause,
+  PieChart,
   Play,
   PlusCircle,
   RotateCcw,
@@ -46,6 +47,14 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Cell,
+  Legend,
+  Pie,
+  PieChart as RechartsPieChart,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+} from "recharts";
 import { toast } from "sonner";
 import type { Section, SubjectQuestionProgress } from "../backend.d";
 import {
@@ -110,7 +119,19 @@ interface QuestionsTabProps {
     secs: number,
     running: boolean,
   ) => void;
+  onSyncPomodoro?: (durationSecs: number) => void;
 }
+
+// Hex colors for recharts slices
+const SUBJECT_HEX_COLORS_Q: Record<string, string> = {
+  Maths: "#e11d48",
+  English: "#3b82f6",
+  Reasoning: "#a855f7",
+  "General Knowledge": "#f59e0b",
+  "Current Affairs": "#10b981",
+  Computer: "#06b6d4",
+  Science: "#22c55e",
+};
 
 const SUBJECT_DISPLAY: Record<
   string,
@@ -245,6 +266,7 @@ export default function QuestionsTab({
   onSectionTimerStart,
   onSectionTimerPause,
   onSectionTimerUpdate,
+  onSyncPomodoro,
 }: QuestionsTabProps) {
   const { data: rawProgress = [], isLoading } = useGetQuestionProgress();
   const { data: targets } = useGetTargets();
@@ -348,10 +370,16 @@ export default function QuestionsTab({
   const qTimerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const qElapsedRef = useRef(0);
 
+  // ── Flag to skip reset effect when restoring from storage ────────────────
+  const isQRestoringRef = useRef(false);
+
   // Restore timer state from localStorage on mount
   useEffect(() => {
     const saved = loadQTimerState();
     if (saved?.subject && saved.timerInitial > 0) {
+      // Mark restore in progress so reset effect is skipped
+      isQRestoringRef.current = true;
+
       const elapsed = Math.floor((Date.now() - saved.savedAt) / 1000);
       const restored = saved.running
         ? Math.max(0, saved.timerSecs - elapsed)
@@ -368,6 +396,11 @@ export default function QuestionsTab({
       if (saved.running && restored > 0) {
         setQTimerRunning(true);
       }
+
+      // Clear restore flag after state updates settle
+      setTimeout(() => {
+        isQRestoringRef.current = false;
+      }, 0);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -396,10 +429,14 @@ export default function QuestionsTab({
 
   const isFirstQMount = useRef(true);
 
-  // Reset timer when subject, count, or per-question time change
+  // Reset timer when subject, count, or per-question time change (but not on restore)
   useEffect(() => {
     if (isFirstQMount.current) {
       isFirstQMount.current = false;
+      return;
+    }
+    // Skip if we are in the middle of restoring from localStorage
+    if (isQRestoringRef.current) {
       return;
     }
     setQTimerRunning(false);
@@ -562,6 +599,18 @@ export default function QuestionsTab({
     };
   }, []);
 
+  // ── Progress chart dialog ─────────────────────────────────────────────────
+  const [progressChartOpen, setProgressChartOpen] = useState(false);
+  const [chartSelectedDate, setChartSelectedDate] = useState(today);
+
+  // Build chart data from progressMap (cumulative — both charts show same total progress)
+  const questionChartData = useMemo(() => {
+    return SUBJECT_TARGETS.map((s) => ({
+      name: s.name,
+      value: progressMapRef.current[s.name] ?? 0,
+    })).filter((e) => e.value > 0);
+  }, [SUBJECT_TARGETS]);
+
   return (
     <div className="p-6 max-w-4xl mx-auto">
       {/* Header */}
@@ -581,6 +630,17 @@ export default function QuestionsTab({
             Day {dayOfCycle} / 30
           </Badge>
           <div className="ml-auto flex items-center gap-2">
+            {/* Progress charts icon */}
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 w-7 p-0 border-border text-muted-foreground hover:text-primary hover:border-primary/50"
+              onClick={() => setProgressChartOpen(true)}
+              title="View progress charts"
+              data-ocid="questions.progress.button"
+            >
+              <PieChart size={13} />
+            </Button>
             <Button
               size="sm"
               variant="outline"
@@ -897,6 +957,7 @@ export default function QuestionsTab({
                             const next = !r;
                             if (next) {
                               onSectionTimerStart?.(subject, qTimerSecs);
+                              onSyncPomodoro?.(qTimerInitial);
                             } else {
                               onSectionTimerPause?.();
                             }
@@ -1058,6 +1119,159 @@ export default function QuestionsTab({
           </a>
         </p>
       </div>
+
+      {/* Progress Chart Dialog */}
+      <Dialog open={progressChartOpen} onOpenChange={setProgressChartOpen}>
+        <DialogContent className="max-w-2xl bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <PieChart size={16} className="text-primary" />
+              Questions Progress Charts
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Date selector */}
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground font-medium">
+                Reference Date:
+              </span>
+              <input
+                type="date"
+                value={chartSelectedDate}
+                max={today}
+                onChange={(e) => setChartSelectedDate(e.target.value)}
+                className="h-8 px-2 text-sm rounded-md border border-input bg-muted/40 text-foreground focus:outline-none focus:border-primary/50"
+              />
+              <span className="text-[10px] text-muted-foreground">
+                (Shows cumulative totals)
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {/* Subject-wise breakdown (same data) */}
+              <div className="rounded-xl border border-border bg-muted/20 p-4">
+                <h4 className="text-xs font-bold text-foreground mb-3 font-display">
+                  Subject-Wise Totals (Today)
+                </h4>
+                {questionChartData.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-44 text-muted-foreground/50 gap-2">
+                    <PieChart size={28} className="opacity-30" />
+                    <p className="text-xs">No questions logged yet</p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={180}>
+                    <RechartsPieChart>
+                      <Pie
+                        data={questionChartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={45}
+                        outerRadius={70}
+                        paddingAngle={2}
+                        dataKey="value"
+                      >
+                        {questionChartData.map((entry, idx) => (
+                          <Cell
+                            key={entry.name}
+                            fill={
+                              SUBJECT_HEX_COLORS_Q[entry.name] ??
+                              `hsl(${(idx * 60) % 360}, 60%, 55%)`
+                            }
+                          />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip
+                        formatter={(value: number) => [
+                          value.toLocaleString(),
+                          "questions",
+                        ]}
+                        contentStyle={{
+                          background: "oklch(0.18 0.01 20)",
+                          border: "1px solid oklch(0.3 0.01 20)",
+                          borderRadius: "8px",
+                          fontSize: "11px",
+                        }}
+                      />
+                      <Legend
+                        iconType="circle"
+                        iconSize={8}
+                        wrapperStyle={{ fontSize: "10px", paddingTop: "4px" }}
+                        formatter={(value) => (
+                          <span style={{ color: "oklch(0.8 0.01 60)" }}>
+                            {value}
+                          </span>
+                        )}
+                      />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+              {/* Monthly progress (cumulative = same data) */}
+              <div className="rounded-xl border border-border bg-muted/20 p-4">
+                <h4 className="text-xs font-bold text-foreground mb-3 font-display">
+                  Monthly Progress (
+                  {new Date().toLocaleDateString("en-IN", {
+                    month: "long",
+                    year: "numeric",
+                  })}
+                  )
+                </h4>
+                {questionChartData.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-44 text-muted-foreground/50 gap-2">
+                    <PieChart size={28} className="opacity-30" />
+                    <p className="text-xs">No questions logged this month</p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={180}>
+                    <RechartsPieChart>
+                      <Pie
+                        data={questionChartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={45}
+                        outerRadius={70}
+                        paddingAngle={2}
+                        dataKey="value"
+                      >
+                        {questionChartData.map((entry, idx) => (
+                          <Cell
+                            key={entry.name}
+                            fill={
+                              SUBJECT_HEX_COLORS_Q[entry.name] ??
+                              `hsl(${(idx * 60) % 360}, 60%, 55%)`
+                            }
+                          />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip
+                        formatter={(value: number) => [
+                          value.toLocaleString(),
+                          "questions",
+                        ]}
+                        contentStyle={{
+                          background: "oklch(0.18 0.01 20)",
+                          border: "1px solid oklch(0.3 0.01 20)",
+                          borderRadius: "8px",
+                          fontSize: "11px",
+                        }}
+                      />
+                      <Legend
+                        iconType="circle"
+                        iconSize={8}
+                        wrapperStyle={{ fontSize: "10px", paddingTop: "4px" }}
+                        formatter={(value) => (
+                          <span style={{ color: "oklch(0.8 0.01 60)" }}>
+                            {value}
+                          </span>
+                        )}
+                      />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* History Dialog */}
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>

@@ -42,6 +42,7 @@ import {
   Flame,
   History,
   Pause,
+  PieChart,
   Play,
   PlusCircle,
   RotateCcw,
@@ -53,6 +54,14 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Cell,
+  Legend,
+  Pie,
+  PieChart as RechartsPieChart,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+} from "recharts";
 import { toast } from "sonner";
 import type { Section } from "../backend.d";
 import {
@@ -77,6 +86,7 @@ const SSC_SUBJECTS = [
   "Current Affairs",
   "Computer",
   "Science",
+  "Mock Test",
 ];
 
 const SUBJECT_COLORS: Record<string, string> = {
@@ -87,6 +97,19 @@ const SUBJECT_COLORS: Record<string, string> = {
   "Current Affairs": "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
   Computer: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
   Science: "bg-green-500/20 text-green-400 border-green-500/30",
+  "Mock Test": "bg-rose-500/20 text-rose-400 border-rose-500/30",
+};
+
+// Hex colors for recharts pie slices
+const SUBJECT_HEX_COLORS: Record<string, string> = {
+  Maths: "#e11d48",
+  English: "#3b82f6",
+  Reasoning: "#a855f7",
+  "General Knowledge": "#f59e0b",
+  "Current Affairs": "#10b981",
+  Computer: "#06b6d4",
+  Science: "#22c55e",
+  "Mock Test": "#f43f5e",
 };
 
 function getTodayDate() {
@@ -222,12 +245,14 @@ interface StudyPlanTabProps {
     secs: number,
     running: boolean,
   ) => void;
+  onSyncPomodoro?: (durationSecs: number) => void;
 }
 
 export default function StudyPlanTab({
   onSectionTimerStart,
   onSectionTimerPause,
   onSectionTimerUpdate,
+  onSyncPomodoro,
 }: StudyPlanTabProps) {
   const { data: sessions = [], isLoading } = useGetStudySessions();
   const { data: targets } = useGetTargets();
@@ -309,10 +334,16 @@ export default function StudyPlanTab({
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedSecsRef = useRef(0);
 
+  // ── Flag to skip reset effect when restoring from storage ────────────────
+  const isRestoringRef = useRef(false);
+
   // ── Restore timer state from localStorage on mount ────────────────────────
   useEffect(() => {
     const saved = loadTimerState();
     if (saved?.subject && saved.timerInitial > 0) {
+      // Mark that we're doing a restore so the reset effect is skipped
+      isRestoringRef.current = true;
+
       // Compute how much time passed since savedAt
       const elapsed = Math.floor((Date.now() - saved.savedAt) / 1000);
       const restored = saved.running
@@ -332,6 +363,11 @@ export default function StudyPlanTab({
       if (saved.running && restored > 0) {
         setSubjectTimerRunning(true);
       }
+
+      // Clear restore flag after state updates settle
+      setTimeout(() => {
+        isRestoringRef.current = false;
+      }, 0);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -359,11 +395,16 @@ export default function StudyPlanTab({
     [],
   );
 
-  // Reset timer when subject or hours change (but not on mount restore)
+  // Reset timer when subject or hours change (but not on mount restore or tab switch restore)
   const isFirstMount = useRef(true);
   useEffect(() => {
+    // Skip on very first mount
     if (isFirstMount.current) {
       isFirstMount.current = false;
+      return;
+    }
+    // Skip if we are in the middle of restoring from localStorage
+    if (isRestoringRef.current) {
       return;
     }
     setSubjectTimerRunning(false);
@@ -567,12 +608,20 @@ export default function StudyPlanTab({
       const next = !r;
       if (next) {
         onSectionTimerStart?.(subject, subjectTimerSecs);
+        onSyncPomodoro?.(subjectTimerInitial);
       } else {
         onSectionTimerPause?.();
       }
       return next;
     });
-  }, [subject, subjectTimerSecs, onSectionTimerStart, onSectionTimerPause]);
+  }, [
+    subject,
+    subjectTimerSecs,
+    subjectTimerInitial,
+    onSectionTimerStart,
+    onSectionTimerPause,
+    onSyncPomodoro,
+  ]);
 
   // Mock test handlers
   const handleAddMockScore = useCallback(() => {
@@ -642,6 +691,80 @@ export default function StudyPlanTab({
     };
   }, []);
 
+  // ── Progress chart dialog ─────────────────────────────────────────────────
+  const [progressChartOpen, setProgressChartOpen] = useState(false);
+  const [chartSelectedDate, setChartSelectedDate] = useState(today);
+
+  // ── Extra time rows from localStorage ────────────────────────────────────
+  const [questionsSectionTime, setQuestionsSectionTime] = useState(0);
+  const [pomodoroTodayTime, setPomodoroTodayTime] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => {
+      const qTime = Number(
+        localStorage.getItem(`ssc_section_time_questions_${today}`) ?? 0,
+      );
+      setQuestionsSectionTime(qTime);
+      try {
+        const log = JSON.parse(localStorage.getItem("ssc_focus_log") ?? "{}");
+        const mins = log[today] ?? 0;
+        setPomodoroTodayTime(mins * 60);
+      } catch {
+        setPomodoroTodayTime(0);
+      }
+    };
+    refresh();
+    const interval = setInterval(refresh, 5000);
+    return () => clearInterval(interval);
+  }, [today]);
+
+  const combinedTotalSecs =
+    totalElapsed + questionsSectionTime + pomodoroTodayTime;
+
+  function formatHMS(secs: number): string {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
+
+  // ── Chart data helpers ───────────────────────────────────────────────────
+  function getChartDataForDate(dateKey: string) {
+    const daySessions = sessions.filter((s) => s.date === dateKey);
+    const map: Record<string, number> = {};
+    for (const s of daySessions) {
+      map[s.subjectName] = (map[s.subjectName] ?? 0) + s.hours;
+    }
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value: Math.round(value * 10) / 10 }))
+      .filter((e) => e.value > 0);
+  }
+
+  function getMonthlyChartData() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const map: Record<string, number> = {};
+    for (const s of sessions) {
+      const d = new Date(`${s.date}T12:00:00`);
+      if (d.getFullYear() === year && d.getMonth() === month) {
+        map[s.subjectName] = (map[s.subjectName] ?? 0) + s.hours;
+      }
+    }
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value: Math.round(value * 10) / 10 }))
+      .filter((e) => e.value > 0);
+  }
+
+  const chartDayData = getChartDataForDate(chartSelectedDate);
+  const chartMonthData = getMonthlyChartData();
+
+  // Actual percentage based on elapsed timer
+  const actualPct = Math.min(
+    (totalElapsed / (DAILY_TARGET_HOURS * 3600)) * 100,
+    100,
+  );
+
   // Filter plan cycles for this section
   const studyPlanCycles = planCycles.filter((c) => c.section === "studyplan");
 
@@ -665,6 +788,17 @@ export default function StudyPlanTab({
             Day {dayOfCycle} / 30
           </Badge>
           <div className="ml-auto flex items-center gap-2">
+            {/* Progress charts icon */}
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 w-7 p-0 border-border text-muted-foreground hover:text-primary hover:border-primary/50"
+              onClick={() => setProgressChartOpen(true)}
+              title="View progress charts"
+              data-ocid="studyplan.progress.button"
+            >
+              <PieChart size={13} />
+            </Button>
             {/* History button */}
             <Button
               size="sm"
@@ -697,20 +831,20 @@ export default function StudyPlanTab({
         >
           <CardContent className="p-6">
             <div className="flex flex-col md:flex-row items-center gap-6">
-              {/* Circular progress */}
+              {/* Circular progress — uses actual elapsed timer time */}
               <div className="relative shrink-0">
                 <CircularProgress
-                  value={todayHours}
-                  max={DAILY_TARGET_HOURS}
+                  value={totalElapsed}
+                  max={DAILY_TARGET_HOURS * 3600}
                   size={140}
                   strokeWidth={11}
                 />
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="font-display text-3xl font-bold text-foreground leading-none">
-                    {formatHours(todayHours)}
+                  <span className="font-display text-2xl font-bold text-foreground leading-none">
+                    {Math.round(actualPct)}%
                   </span>
                   <span className="text-xs text-muted-foreground mt-1">
-                    of {DAILY_TARGET_HOURS}h
+                    actual
                   </span>
                 </div>
               </div>
@@ -741,11 +875,11 @@ export default function StudyPlanTab({
                 />
 
                 {/* Actual studied time as primary stat */}
-                <div className="rounded-lg bg-primary/8 border border-primary/15 p-2.5 flex items-center gap-2 mb-3">
+                <div className="rounded-lg bg-primary/8 border border-primary/15 p-2.5 flex items-center gap-2 mb-2">
                   <Timer size={13} className="text-primary shrink-0" />
                   <div className="flex-1">
                     <p className="text-[10px] text-muted-foreground">
-                      Actual studied today (timer-based)
+                      Study Plan timer today
                     </p>
                     <p className="font-mono text-sm font-bold text-primary tabular-nums">
                       {elapsedDisplay}
@@ -756,7 +890,46 @@ export default function StudyPlanTab({
                       Planned: {formatHours(todayHours)}
                     </p>
                     <p className="text-[10px] text-muted-foreground">
-                      {Math.round(dailyPct)}% of target
+                      {Math.round(actualPct)}% of target
+                    </p>
+                  </div>
+                </div>
+
+                {/* Questions section time */}
+                <div className="rounded-lg bg-blue-500/8 border border-blue-500/15 p-2 flex items-center gap-2 mb-1.5">
+                  <Timer size={12} className="text-blue-400 shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-[10px] text-muted-foreground">
+                      Questions timer today
+                    </p>
+                    <p className="font-mono text-xs font-bold text-blue-400 tabular-nums">
+                      {formatHMS(questionsSectionTime)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Pomodoro focus time */}
+                <div className="rounded-lg bg-amber-500/8 border border-amber-500/15 p-2 flex items-center gap-2 mb-2">
+                  <Timer size={12} className="text-amber-400 shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-[10px] text-muted-foreground">
+                      Pomodoro focus today
+                    </p>
+                    <p className="font-mono text-xs font-bold text-amber-400 tabular-nums">
+                      {formatHMS(pomodoroTodayTime)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Combined total */}
+                <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/25 p-2 flex items-center gap-2 mb-2">
+                  <Timer size={12} className="text-emerald-400 shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-[10px] text-muted-foreground">
+                      Total active time today
+                    </p>
+                    <p className="font-mono text-sm font-bold text-emerald-400 tabular-nums">
+                      {formatHMS(combinedTotalSecs)}
                     </p>
                   </div>
                 </div>
@@ -772,7 +945,7 @@ export default function StudyPlanTab({
                   </div>
                   <div className="text-center p-2.5 rounded-lg bg-muted/40">
                     <p className="font-display text-xl font-bold text-primary leading-none">
-                      {Math.round(dailyPct)}%
+                      {Math.round(actualPct)}%
                     </p>
                     <p className="text-[10px] text-muted-foreground mt-1">
                       Complete
@@ -1347,6 +1520,152 @@ export default function StudyPlanTab({
           </a>
         </p>
       </div>
+
+      {/* Progress Chart Dialog */}
+      <Dialog open={progressChartOpen} onOpenChange={setProgressChartOpen}>
+        <DialogContent className="max-w-2xl bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <PieChart size={16} className="text-primary" />
+              Study Plan Progress Charts
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Date selector */}
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground font-medium">
+                Select Date:
+              </span>
+              <input
+                type="date"
+                value={chartSelectedDate}
+                max={today}
+                onChange={(e) => setChartSelectedDate(e.target.value)}
+                className="h-8 px-2 text-sm rounded-md border border-input bg-muted/40 text-foreground focus:outline-none focus:border-primary/50"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {/* Today / Selected Date Chart */}
+              <div className="rounded-xl border border-border bg-muted/20 p-4">
+                <h4 className="text-xs font-bold text-foreground mb-3 font-display">
+                  {chartSelectedDate === today
+                    ? "Today's Progress"
+                    : `Progress on ${chartSelectedDate}`}
+                </h4>
+                {chartDayData.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-44 text-muted-foreground/50 gap-2">
+                    <PieChart size={28} className="opacity-30" />
+                    <p className="text-xs">No data for this date</p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={180}>
+                    <RechartsPieChart>
+                      <Pie
+                        data={chartDayData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={45}
+                        outerRadius={70}
+                        paddingAngle={2}
+                        dataKey="value"
+                      >
+                        {chartDayData.map((entry, idx) => (
+                          <Cell
+                            key={entry.name}
+                            fill={
+                              SUBJECT_HEX_COLORS[entry.name] ??
+                              `hsl(${(idx * 60) % 360}, 60%, 55%)`
+                            }
+                          />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip
+                        formatter={(value: number) => [`${value}h`, ""]}
+                        contentStyle={{
+                          background: "oklch(0.18 0.01 20)",
+                          border: "1px solid oklch(0.3 0.01 20)",
+                          borderRadius: "8px",
+                          fontSize: "11px",
+                        }}
+                      />
+                      <Legend
+                        iconType="circle"
+                        iconSize={8}
+                        wrapperStyle={{ fontSize: "10px", paddingTop: "4px" }}
+                        formatter={(value) => (
+                          <span style={{ color: "oklch(0.8 0.01 60)" }}>
+                            {value}
+                          </span>
+                        )}
+                      />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+              {/* Monthly Chart */}
+              <div className="rounded-xl border border-border bg-muted/20 p-4">
+                <h4 className="text-xs font-bold text-foreground mb-3 font-display">
+                  Monthly Progress (
+                  {new Date().toLocaleDateString("en-IN", {
+                    month: "long",
+                    year: "numeric",
+                  })}
+                  )
+                </h4>
+                {chartMonthData.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-44 text-muted-foreground/50 gap-2">
+                    <PieChart size={28} className="opacity-30" />
+                    <p className="text-xs">No data this month</p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={180}>
+                    <RechartsPieChart>
+                      <Pie
+                        data={chartMonthData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={45}
+                        outerRadius={70}
+                        paddingAngle={2}
+                        dataKey="value"
+                      >
+                        {chartMonthData.map((entry, idx) => (
+                          <Cell
+                            key={entry.name}
+                            fill={
+                              SUBJECT_HEX_COLORS[entry.name] ??
+                              `hsl(${(idx * 60) % 360}, 60%, 55%)`
+                            }
+                          />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip
+                        formatter={(value: number) => [`${value}h`, ""]}
+                        contentStyle={{
+                          background: "oklch(0.18 0.01 20)",
+                          border: "1px solid oklch(0.3 0.01 20)",
+                          borderRadius: "8px",
+                          fontSize: "11px",
+                        }}
+                      />
+                      <Legend
+                        iconType="circle"
+                        iconSize={8}
+                        wrapperStyle={{ fontSize: "10px", paddingTop: "4px" }}
+                        formatter={(value) => (
+                          <span style={{ color: "oklch(0.8 0.01 60)" }}>
+                            {value}
+                          </span>
+                        )}
+                      />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* History Dialog */}
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>

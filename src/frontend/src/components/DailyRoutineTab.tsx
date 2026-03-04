@@ -9,6 +9,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -18,7 +23,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
@@ -38,10 +42,19 @@ import {
   Flame,
   Lock,
   Pencil,
+  PieChart,
   PlusCircle,
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Cell,
+  Legend,
+  Pie,
+  PieChart as RechartsPieChart,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+} from "recharts";
 import { toast } from "sonner";
 import { formatTime } from "./AppearancePanel";
 
@@ -194,6 +207,18 @@ const SUBJECT_OPTIONS = [
   "Science",
   "Other (custom)",
 ] as const;
+
+// Hex colors for recharts slices
+const ROUTINE_SUBJECT_HEX: Record<string, string> = {
+  Maths: "#e11d48",
+  English: "#3b82f6",
+  Reasoning: "#a855f7",
+  "General Knowledge": "#f59e0b",
+  "Current Affairs": "#10b981",
+  Computer: "#06b6d4",
+  Science: "#22c55e",
+  "No Subject": "#6b7280",
+};
 
 // ─── Empty form state ────────────────────────────────────────────────────────
 
@@ -352,6 +377,7 @@ export default function DailyRoutineTab({
     loadDoneForDay(todayKey()),
   );
 
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<Omit<RoutineRow, "id">>(emptyForm());
@@ -362,6 +388,10 @@ export default function DailyRoutineTab({
   // ── Copy from date dialog ─────────────────────────────────────────────────
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [copyFromDate, setCopyFromDate] = useState("");
+
+  // ── Progress chart dialog ─────────────────────────────────────────────────
+  const [progressChartOpen, setProgressChartOpen] = useState(false);
+  const [chartDateKey, setChartDateKey] = useState<string>(todayKey());
 
   // ── 100-day progress table ────────────────────────────────────────────────
   const [startDate, setStartDateState] = useState(getStartDate);
@@ -470,6 +500,7 @@ export default function DailyRoutineTab({
 
   const selectDay = useCallback((key: string) => {
     setSelectedKey(key);
+    setCalendarOpen(false);
   }, []);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
@@ -662,7 +693,155 @@ export default function DailyRoutineTab({
     return s;
   }, [rowsKey, doneKey]);
 
+  // ── Chart data helpers ───────────────────────────────────────────────────
+  const routineChartDataForDate = useMemo(() => {
+    const dayRows = loadRowsForDay(chartDateKey);
+    const dayDone = loadDoneForDay(chartDateKey);
+    const map: Record<string, number> = {};
+    for (const r of dayRows) {
+      if (dayDone.has(r.id)) {
+        const subj = r.subject || "No Subject";
+        map[subj] = (map[subj] ?? 0) + 1;
+      }
+    }
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, [chartDateKey]);
+
+  const routineMonthlyChartData = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const todayD = now.getDate();
+    const map: Record<string, number> = {};
+    for (let d = 1; d <= todayD; d++) {
+      const key = toDateKey(year, month, d);
+      const dayRows = loadRowsForDay(key);
+      const dayDone = loadDoneForDay(key);
+      for (const r of dayRows) {
+        if (dayDone.has(r.id)) {
+          const subj = r.subject || "No Subject";
+          map[subj] = (map[subj] ?? 0) + 1;
+        }
+      }
+    }
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, []);
+
   // ─── Render ────────────────────────────────────────────────────────────────
+
+  // ── Calendar grid (reusable inside popover) ──────────────────────────────
+  const calendarGrid = (
+    <div className="w-72">
+      {/* Month navigation */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+        <button
+          type="button"
+          onClick={prevMonth}
+          aria-label="Previous month"
+          className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors"
+        >
+          <ChevronLeft size={15} />
+        </button>
+        <h2 className="text-xs font-bold text-foreground font-display tracking-wide">
+          {MONTH_NAMES[viewMonth]} {viewYear}
+        </h2>
+        <button
+          type="button"
+          onClick={nextMonth}
+          aria-label="Next month"
+          className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors"
+        >
+          <ChevronRight size={15} />
+        </button>
+      </div>
+
+      {/* Day-of-week headers */}
+      <div className="grid grid-cols-7 border-b border-border">
+        {DAY_NAMES.map((d) => (
+          <div
+            key={d}
+            className="py-1.5 text-center text-[9px] font-bold text-muted-foreground uppercase tracking-widest"
+          >
+            {d}
+          </div>
+        ))}
+      </div>
+
+      {/* Calendar grid */}
+      <div className="grid grid-cols-7">
+        {Array.from({ length: firstDayOfWeek }, (_, i) => DAY_NAMES[i]).map(
+          (dayName) => (
+            <div
+              key={`blank-${viewYear}-${viewMonth}-${dayName}`}
+              className="border-b border-r border-border/30 h-9"
+            />
+          ),
+        )}
+        {Array.from({ length: daysInMonth }).map((_, i) => {
+          const day = i + 1;
+          const key = toDateKey(viewYear, viewMonth, day);
+          const isToday = key === todayKey();
+          const isSelected = key === selectedKey;
+          const badge = monthBadges[key];
+          const isPast = compareKeys(key, todayKey()) < 0;
+          const isFuture = compareKeys(key, todayKey()) > 0;
+
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => selectDay(key)}
+              aria-label={`${day} ${MONTH_NAMES[viewMonth]}`}
+              className={[
+                "relative h-9 flex flex-col items-center justify-center transition-all duration-150",
+                "border-b border-r border-border/30",
+                isSelected
+                  ? "bg-primary/20 ring-2 ring-inset ring-primary z-10"
+                  : isToday
+                    ? "bg-primary/10"
+                    : isPast
+                      ? "bg-background/30 hover:bg-accent/20"
+                      : isFuture
+                        ? "hover:bg-accent/20"
+                        : "hover:bg-accent/20",
+                badge?.allDone && !isSelected ? "bg-emerald-500/10" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              <span
+                className={[
+                  "text-[11px] font-semibold leading-none",
+                  isToday
+                    ? "text-primary"
+                    : isPast
+                      ? "text-muted-foreground/60"
+                      : "text-foreground",
+                ].join(" ")}
+              >
+                {day}
+              </span>
+              {badge && (
+                <span
+                  className={[
+                    "mt-0.5 text-[8px] font-bold px-0.5 rounded-full leading-tight",
+                    badge.allDone
+                      ? "bg-emerald-500/30 text-emerald-400"
+                      : "bg-primary/30 text-primary",
+                  ].join(" ")}
+                >
+                  {badge.count}
+                </span>
+              )}
+              {isToday && !isSelected && (
+                <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   return (
     <TooltipProvider>
@@ -681,6 +860,16 @@ export default function DailyRoutineTab({
                 Plan, track, and review your daily schedule
               </p>
             </div>
+            {/* Progress chart icon */}
+            <button
+              type="button"
+              onClick={() => setProgressChartOpen(true)}
+              className="w-8 h-8 rounded-lg border border-border text-muted-foreground hover:text-primary hover:border-primary/50 flex items-center justify-center transition-colors"
+              title="View progress charts"
+              data-ocid="routine.progress.button"
+            >
+              <PieChart size={15} />
+            </button>
             {streak > 0 && (
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20">
                 <Flame size={13} className="text-amber-400" />
@@ -713,654 +902,683 @@ export default function DailyRoutineTab({
           )}
         </header>
 
-        <ScrollArea className="flex-1">
-          <div className="p-4 md:p-6 space-y-5">
-            {/* ── Monthly Calendar ─────────────────────────────────────────── */}
-            <div className="rounded-2xl border border-border bg-card/60 overflow-hidden">
-              {/* Month navigation */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/80">
-                <button
-                  type="button"
-                  onClick={prevMonth}
-                  aria-label="Previous month"
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                <h2 className="text-sm font-bold text-foreground font-display tracking-wide">
-                  {MONTH_NAMES[viewMonth]} {viewYear}
-                </h2>
-                <button
-                  type="button"
-                  onClick={nextMonth}
-                  aria-label="Next month"
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors"
-                >
-                  <ChevronRight size={18} />
-                </button>
-              </div>
+        {/* ── Date selector row (calendar icon + selected date + actions) ── */}
+        <div className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-card/60 shrink-0 flex-wrap">
+          {/* Calendar icon popover trigger */}
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 h-8 text-xs font-semibold border-border text-muted-foreground hover:text-foreground shrink-0"
+                data-ocid="routine.calendar.button"
+              >
+                <CalendarDays size={14} className="text-primary" />
+                {MONTH_NAMES[viewMonth].slice(0, 3)} {viewYear}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              className="p-0 bg-card border-border shadow-xl w-auto"
+              align="start"
+            >
+              {calendarGrid}
+            </PopoverContent>
+          </Popover>
 
-              {/* Day-of-week headers */}
-              <div className="grid grid-cols-7 border-b border-border">
-                {DAY_NAMES.map((d) => (
-                  <div
-                    key={d}
-                    className="py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest"
-                  >
-                    {d}
-                  </div>
-                ))}
-              </div>
+          {/* Selected date label */}
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <p className="text-sm font-bold text-foreground font-display truncate">
+              {selectedDateLabel}
+            </p>
+            {dayType === "today" && (
+              <Badge className="h-4 text-[10px] px-1.5 bg-primary/20 text-primary border-primary/30 border font-semibold shrink-0">
+                Today
+              </Badge>
+            )}
+            {dayType === "past" && (
+              <Badge className="h-4 text-[10px] px-1.5 bg-muted/40 text-muted-foreground border-border font-semibold shrink-0">
+                Past
+              </Badge>
+            )}
+            {dayType === "future" && (
+              <Badge className="h-4 text-[10px] px-1.5 bg-blue-500/20 text-blue-400 border-blue-500/30 border font-semibold shrink-0">
+                Upcoming
+              </Badge>
+            )}
+            {rows.length > 0 && (
+              <span className="text-[10px] text-muted-foreground shrink-0">
+                {rows.length} task{rows.length !== 1 ? "s" : ""}
+                {totalDuration > 0 && ` · ${formatDuration(totalDuration)}`}
+                {" · "}
+                <span className="text-primary font-semibold">
+                  {progressPct}% done
+                </span>
+              </span>
+            )}
+          </div>
 
-              {/* Calendar grid */}
-              <div className="grid grid-cols-7">
-                {/* Leading blank cells — one per skipped weekday slot */}
-                {Array.from(
-                  { length: firstDayOfWeek },
-                  (_, i) => DAY_NAMES[i],
-                ).map((dayName) => (
-                  <div
-                    key={`blank-${viewYear}-${viewMonth}-${dayName}`}
-                    className="border-b border-r border-border/30 h-11"
-                  />
-                ))}
-
-                {/* Day cells */}
-                {Array.from({ length: daysInMonth }).map((_, i) => {
-                  const day = i + 1;
-                  const key = toDateKey(viewYear, viewMonth, day);
-                  const isToday = key === todayKey();
-                  const isSelected = key === selectedKey;
-                  const badge = monthBadges[key];
-                  const isPast = compareKeys(key, todayKey()) < 0;
-                  const isFuture = compareKeys(key, todayKey()) > 0;
-
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => selectDay(key)}
-                      aria-label={`${day} ${MONTH_NAMES[viewMonth]}`}
-                      className={[
-                        "relative h-11 flex flex-col items-center justify-center transition-all duration-150",
-                        "border-b border-r border-border/30",
-                        isSelected
-                          ? "bg-primary/20 ring-2 ring-inset ring-primary z-10"
-                          : isToday
-                            ? "bg-primary/10"
-                            : isPast
-                              ? "bg-background/30 hover:bg-accent/20"
-                              : isFuture
-                                ? "hover:bg-accent/20"
-                                : "hover:bg-accent/20",
-                        badge?.allDone && !isSelected
-                          ? "bg-emerald-500/10"
-                          : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                    >
-                      <span
-                        className={[
-                          "text-xs font-semibold leading-none",
-                          isToday
-                            ? "text-primary"
-                            : isPast
-                              ? "text-muted-foreground/60"
-                              : "text-foreground",
-                        ].join(" ")}
-                      >
-                        {day}
-                      </span>
-                      {badge && (
-                        <span
-                          className={[
-                            "mt-0.5 text-[9px] font-bold px-1 rounded-full leading-tight",
-                            badge.allDone
-                              ? "bg-emerald-500/30 text-emerald-400"
-                              : "bg-primary/30 text-primary",
-                          ].join(" ")}
-                        >
-                          {badge.count}
-                        </span>
-                      )}
-                      {isToday && !isSelected && (
-                        <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+          {/* Action buttons */}
+          {canEdit && (
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                onClick={() => setCopyDialogOpen(true)}
+                size="sm"
+                variant="outline"
+                className="gap-2 h-8 text-xs font-semibold border-border text-muted-foreground hover:text-foreground"
+                data-ocid="routine.copy.button"
+              >
+                <Copy size={13} />
+                Copy From Date
+              </Button>
+              <Button
+                onClick={openAdd}
+                size="sm"
+                className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground h-8 text-xs font-semibold"
+                data-ocid="routine.add_task.button"
+              >
+                <PlusCircle size={13} />
+                Add Task
+              </Button>
             </div>
+          )}
+        </div>
 
-            {/* ── Selected Day Panel ───────────────────────────────────────── */}
-            <div className="rounded-2xl border border-border bg-card/60 overflow-hidden">
-              {/* Day header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/80">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
-                    <CalendarDays size={15} className="text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-foreground font-display">
-                      {selectedDateLabel}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      {dayType === "today" && (
-                        <Badge className="h-4 text-[10px] px-1.5 bg-primary/20 text-primary border-primary/30 border font-semibold">
-                          Today
-                        </Badge>
-                      )}
-                      {dayType === "past" && (
-                        <Badge className="h-4 text-[10px] px-1.5 bg-muted/40 text-muted-foreground border-border font-semibold">
-                          Past
-                        </Badge>
-                      )}
-                      {dayType === "future" && (
-                        <Badge className="h-4 text-[10px] px-1.5 bg-blue-500/20 text-blue-400 border-blue-500/30 border font-semibold">
-                          Upcoming
-                        </Badge>
-                      )}
-                      {rows.length > 0 && (
-                        <span className="text-[10px] text-muted-foreground">
-                          {rows.length} task{rows.length !== 1 ? "s" : ""}
-                          {totalDuration > 0 &&
-                            ` · ${formatDuration(totalDuration)}`}
-                          {" · "}
-                          <span className="text-primary font-semibold">
-                            {progressPct}% done
-                          </span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
+        {/* ── Task Table Panel (fills remaining vertical space) ── */}
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {/* Past day read-only banner */}
+          {dayType === "past" && (
+            <div className="flex items-center gap-3 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 shrink-0">
+              <AlertTriangle size={14} className="text-amber-400 shrink-0" />
+              <p className="text-xs text-amber-400 font-medium">
+                Past Day — Read Only. Data is saved and cannot be edited.
+              </p>
+            </div>
+          )}
 
-                {canEdit && (
-                  <div className="flex items-center gap-2">
+          {/* Future day info banner */}
+          {dayType === "future" && rows.length === 0 && (
+            <div className="flex items-center gap-3 px-4 py-2 bg-blue-500/8 border-b border-blue-500/15 shrink-0">
+              <CalendarDays size={14} className="text-blue-400 shrink-0" />
+              <p className="text-xs text-blue-400 font-medium">
+                Plan ahead — tasks added here will be available on this day.
+              </p>
+            </div>
+          )}
+
+          {/* Table or empty state */}
+          {sorted.length === 0 ? (
+            <div className="flex flex-col items-center justify-center flex-1 text-muted-foreground gap-3">
+              <CalendarDays size={40} className="opacity-20" />
+              <p className="text-sm font-medium">No tasks scheduled.</p>
+              {canEdit ? (
+                <p className="text-xs">
+                  Click{" "}
+                  <span className="text-primary font-semibold">"Add Task"</span>{" "}
+                  to plan your day.
+                </p>
+              ) : (
+                <p className="text-xs">No data was logged for this day.</p>
+              )}
+            </div>
+          ) : (
+            <div
+              className="flex-1 min-h-0 w-full"
+              style={{ overflowX: "auto", overflowY: "auto" }}
+            >
+              <table className="w-full border-collapse text-sm">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-card/95 backdrop-blur-sm">
+                    <th className="w-10 px-3 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                      #
+                    </th>
+                    <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[110px]">
+                      Time
+                    </th>
+                    <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[150px]">
+                      Activity
+                    </th>
+                    <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[100px]">
+                      Subject
+                    </th>
+                    <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-20">
+                      Duration
+                    </th>
+                    <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-24">
+                      Priority
+                    </th>
+                    <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[140px]">
+                      Notes
+                    </th>
+                    <th className="px-4 py-3 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-16">
+                      Done
+                    </th>
                     {canEdit && (
-                      <Button
-                        onClick={() => setCopyDialogOpen(true)}
-                        size="sm"
-                        variant="outline"
-                        className="gap-2 h-8 text-xs font-semibold border-border text-muted-foreground hover:text-foreground"
-                      >
-                        <Copy size={13} />
-                        Copy From Date
-                      </Button>
+                      <th className="px-3 py-3 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-20">
+                        Actions
+                      </th>
                     )}
-                    <Button
-                      onClick={openAdd}
-                      size="sm"
-                      className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground h-8 text-xs font-semibold"
-                    >
-                      <PlusCircle size={13} />
-                      Add Task
-                    </Button>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((row, idx) => {
+                    const done = doneIds.has(row.id);
+                    const dur = calcDuration(row.startTime, row.endTime);
+                    const pStyle = PRIORITY_STYLES[row.priority];
+
+                    return (
+                      <tr
+                        key={row.id}
+                        className={`border-t border-border transition-colors group ${
+                          done
+                            ? "bg-emerald-500/5 hover:bg-emerald-500/8"
+                            : "hover:bg-accent/15"
+                        }`}
+                      >
+                        {/* # */}
+                        <td className="px-3 py-3 text-xs text-muted-foreground font-mono">
+                          {idx + 1}
+                        </td>
+
+                        {/* Time */}
+                        <td className="px-4 py-3">
+                          <span
+                            className={`text-xs font-mono font-semibold ${done ? "text-muted-foreground line-through" : "text-foreground"}`}
+                          >
+                            {formatTime(row.startTime, timeFormat)} –{" "}
+                            {formatTime(row.endTime, timeFormat)}
+                          </span>
+                        </td>
+
+                        {/* Activity */}
+                        <td className="px-4 py-3">
+                          <span
+                            className={`text-sm font-medium ${done ? "text-muted-foreground line-through" : "text-foreground"}`}
+                          >
+                            {row.activity}
+                          </span>
+                        </td>
+
+                        {/* Subject */}
+                        <td className="px-4 py-3">
+                          {row.subject ? (
+                            <span
+                              className={`text-xs px-2 py-1 rounded-md bg-primary/10 text-primary border border-primary/20 font-medium ${done ? "opacity-50" : ""}`}
+                            >
+                              {row.subject}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/40 text-xs">
+                              –
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Duration */}
+                        <td className="px-4 py-3">
+                          <span
+                            className={`text-xs font-mono ${done ? "text-muted-foreground" : "text-foreground"}`}
+                          >
+                            {formatDuration(dur)}
+                          </span>
+                        </td>
+
+                        {/* Priority */}
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border font-semibold ${pStyle.badge} ${done ? "opacity-50" : ""}`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${pStyle.dot}`}
+                            />
+                            {pStyle.label}
+                          </span>
+                        </td>
+
+                        {/* Notes */}
+                        <td className="px-4 py-3">
+                          <span
+                            className={`text-xs ${done ? "text-muted-foreground/50 line-through" : "text-muted-foreground"} max-w-[180px] block truncate`}
+                            title={row.notes}
+                          >
+                            {row.notes || "–"}
+                          </span>
+                        </td>
+
+                        {/* Done checkbox */}
+                        <td className="px-4 py-3 text-center">
+                          {dayType === "future" ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex cursor-not-allowed opacity-40">
+                                  <Circle
+                                    size={20}
+                                    className="text-muted-foreground/40"
+                                  />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="text-xs">
+                                Available on that day
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : dayType === "past" ? (
+                            done ? (
+                              <CheckCircle2
+                                size={20}
+                                className="text-emerald-500/50 mx-auto"
+                              />
+                            ) : (
+                              <Circle
+                                size={20}
+                                className="text-muted-foreground/25 mx-auto"
+                              />
+                            )
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => toggleDone(row.id)}
+                              aria-label={
+                                done ? "Mark as not done" : "Mark as done"
+                              }
+                              className="transition-all hover:scale-110"
+                            >
+                              {done ? (
+                                <CheckCircle2
+                                  size={20}
+                                  className="text-emerald-500"
+                                />
+                              ) : (
+                                <Circle
+                                  size={20}
+                                  className="text-muted-foreground/40 hover:text-emerald-400 transition-colors"
+                                />
+                              )}
+                            </button>
+                          )}
+                        </td>
+
+                        {/* Actions — only for editable days */}
+                        {canEdit && (
+                          <td className="px-3 py-3 text-center">
+                            <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                type="button"
+                                onClick={() => openEdit(row)}
+                                aria-label="Edit task"
+                                className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                              >
+                                <Pencil size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(row.id)}
+                                aria-label="Delete task"
+                                className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Table footer — total duration row — shown only when tasks exist */}
+          {sorted.length > 0 && (
+            <div className="shrink-0 border-t border-border bg-card/60 px-4 py-2 flex items-center justify-between">
+              <span className="text-xs text-muted-foreground font-semibold">
+                Total scheduled
+              </span>
+              <div className="flex items-center gap-4">
+                <span className="text-xs font-mono font-bold text-primary">
+                  {formatDuration(totalDuration)}
+                </span>
+                {dayType !== "past" && rows.length > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <Clock size={12} className="text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">
+                      {doneCount}/{rows.length} complete
+                    </span>
                   </div>
                 )}
               </div>
+            </div>
+          )}
+        </div>
 
-              {/* Past day read-only banner */}
-              {dayType === "past" && (
-                <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/20">
-                  <AlertTriangle
-                    size={14}
-                    className="text-amber-400 shrink-0"
-                  />
-                  <p className="text-xs text-amber-400 font-medium">
-                    Past Day — Read Only. Data is saved and cannot be edited.
-                  </p>
-                </div>
-              )}
+        {/* ── All Days Progress Table (scrollable section below) ── */}
+        <div className="shrink-0 border-t border-border bg-background">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-card/80">
+            <div className="flex items-center gap-2">
+              <CalendarDays size={15} className="text-primary" />
+              <h3 className="text-sm font-bold text-foreground font-display">
+                All Days Progress (100 Days)
+              </h3>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-border text-muted-foreground hover:text-foreground gap-1.5"
+              onClick={() => {
+                const newStart = todayKey();
+                setStartDate(newStart);
+                setStartDateState(newStart);
+                toast.success("100-day tracker reset to today");
+              }}
+            >
+              Set Start Date
+            </Button>
+          </div>
+          <ScrollArea className="h-52">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-card/95 backdrop-blur-sm">
+                    <th className="px-3 py-2 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-12">
+                      Day
+                    </th>
+                    <th className="px-3 py-2 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                      Date
+                    </th>
+                    <th className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-16">
+                      Sched
+                    </th>
+                    <th className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-14">
+                      Done
+                    </th>
+                    <th className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-20">
+                      Progress
+                    </th>
+                    <th className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-14">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hundredDayData.map((entry) => {
+                    const isSelected = entry.dateKey === selectedKey;
+                    return (
+                      <tr
+                        key={entry.dateKey}
+                        onClick={() => {
+                          if (!entry.isFuture) selectDay(entry.dateKey);
+                        }}
+                        onKeyDown={(e) => {
+                          if (
+                            (e.key === "Enter" || e.key === " ") &&
+                            !entry.isFuture
+                          ) {
+                            selectDay(entry.dateKey);
+                          }
+                        }}
+                        tabIndex={entry.isFuture ? -1 : 0}
+                        className={[
+                          "border-t border-border transition-colors cursor-pointer",
+                          entry.isToday ? "bg-primary/10 font-semibold" : "",
+                          entry.isPast ? "opacity-70" : "",
+                          isSelected
+                            ? "ring-1 ring-inset ring-primary"
+                            : "hover:bg-accent/15",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                      >
+                        <td className="px-3 py-2 text-xs font-mono text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            D{entry.dayNum}
+                            {entry.isPast && (
+                              <Lock
+                                size={9}
+                                className="text-muted-foreground/40"
+                              />
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-xs text-foreground">
+                          {(() => {
+                            const [y, m, d] = entry.dateKey
+                              .split("-")
+                              .map(Number);
+                            return new Date(y, m - 1, d).toLocaleDateString(
+                              "en-IN",
+                              {
+                                day: "numeric",
+                                month: "short",
+                              },
+                            );
+                          })()}
+                          {entry.isToday && (
+                            <span className="ml-1 text-[9px] text-primary font-bold">
+                              TODAY
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-center text-muted-foreground font-mono">
+                          {entry.scheduled || <span>{"–"}</span>}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-center font-mono">
+                          {entry.scheduled > 0 ? (
+                            entry.done
+                          ) : (
+                            <span>{"–"}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-center">
+                          {entry.scheduled > 0 ? (
+                            <div className="flex items-center gap-1">
+                              <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-primary rounded-full"
+                                  style={{ width: `${entry.pct}%` }}
+                                />
+                              </div>
+                              <span className="text-[9px] font-mono text-primary shrink-0">
+                                {entry.pct}%
+                              </span>
+                            </div>
+                          ) : (
+                            <span>{"–"}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          {entry.scheduled === 0 ? (
+                            <span className="text-muted-foreground/40 text-xs">
+                              {"–"}
+                            </span>
+                          ) : entry.pct === 100 ? (
+                            <CheckCircle2
+                              size={14}
+                              className="text-emerald-400 mx-auto"
+                            />
+                          ) : entry.isFuture ? (
+                            <Circle
+                              size={14}
+                              className="text-muted-foreground/30 mx-auto"
+                            />
+                          ) : (
+                            <div className="flex items-center justify-center gap-0.5">
+                              <Circle
+                                size={14}
+                                className={
+                                  entry.pct > 0
+                                    ? "text-amber-400"
+                                    : "text-muted-foreground/30"
+                                }
+                              />
+                              {entry.pct > 0 && (
+                                <span className="text-[8px] text-amber-400 font-bold">
+                                  {entry.pct}%
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </ScrollArea>
+        </div>
 
-              {/* Future day info banner */}
-              {dayType === "future" && rows.length === 0 && (
-                <div className="flex items-center gap-3 px-4 py-2.5 bg-blue-500/8 border-b border-blue-500/15">
-                  <CalendarDays size={14} className="text-blue-400 shrink-0" />
-                  <p className="text-xs text-blue-400 font-medium">
-                    Plan ahead — tasks added here will be available on this day.
-                  </p>
-                </div>
-              )}
-
-              {/* Table or empty state */}
-              {sorted.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
-                  <CalendarDays size={40} className="opacity-20" />
-                  <p className="text-sm font-medium">No tasks scheduled.</p>
-                  {canEdit ? (
-                    <p className="text-xs">
-                      Click{" "}
-                      <span className="text-primary font-semibold">
-                        "Add Task"
-                      </span>{" "}
-                      to plan your day.
-                    </p>
+        {/* ── Progress Chart Dialog ─────────────────────────────────────────── */}
+        <Dialog open={progressChartOpen} onOpenChange={setProgressChartOpen}>
+          <DialogContent className="sm:max-w-2xl bg-card border-border">
+            <DialogHeader>
+              <DialogTitle className="font-display text-foreground flex items-center gap-2">
+                <PieChart size={16} className="text-primary" />
+                Routine Progress Charts
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {/* Date selector */}
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground font-medium">
+                  Select Date:
+                </span>
+                <input
+                  type="date"
+                  value={chartDateKey}
+                  max={todayKey()}
+                  onChange={(e) => setChartDateKey(e.target.value)}
+                  className="h-8 px-2 text-sm rounded-md border border-input bg-muted/40 text-foreground focus:outline-none focus:border-primary/50"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {/* Day chart */}
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <h4 className="text-xs font-bold text-foreground mb-3 font-display">
+                    {chartDateKey === todayKey()
+                      ? "Today's Completed Tasks"
+                      : `Tasks Done on ${chartDateKey}`}
+                  </h4>
+                  {routineChartDataForDate.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-44 text-muted-foreground/50 gap-2">
+                      <PieChart size={28} className="opacity-30" />
+                      <p className="text-xs">
+                        No completed tasks for this date
+                      </p>
+                    </div>
                   ) : (
-                    <p className="text-xs">No data was logged for this day.</p>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <RechartsPieChart>
+                        <Pie
+                          data={routineChartDataForDate}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={45}
+                          outerRadius={70}
+                          paddingAngle={2}
+                          dataKey="value"
+                        >
+                          {routineChartDataForDate.map((entry, idx) => (
+                            <Cell
+                              key={entry.name}
+                              fill={
+                                ROUTINE_SUBJECT_HEX[entry.name] ??
+                                `hsl(${(idx * 60) % 360}, 60%, 55%)`
+                              }
+                            />
+                          ))}
+                        </Pie>
+                        <RechartsTooltip
+                          formatter={(value: number) => [
+                            `${value} task${value !== 1 ? "s" : ""}`,
+                            "",
+                          ]}
+                          contentStyle={{
+                            background: "oklch(0.18 0.01 20)",
+                            border: "1px solid oklch(0.3 0.01 20)",
+                            borderRadius: "8px",
+                            fontSize: "11px",
+                          }}
+                        />
+                        <Legend
+                          iconType="circle"
+                          iconSize={8}
+                          wrapperStyle={{ fontSize: "10px", paddingTop: "4px" }}
+                          formatter={(value) => (
+                            <span style={{ color: "oklch(0.8 0.01 60)" }}>
+                              {value}
+                            </span>
+                          )}
+                        />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
                   )}
                 </div>
-              ) : (
-                <div
-                  className="max-h-96 w-full"
-                  style={{ overflowX: "auto", overflowY: "auto" }}
-                >
-                  <table className="w-full border-collapse text-sm">
-                    <thead className="sticky top-0 z-10">
-                      <tr className="bg-card/95 backdrop-blur-sm">
-                        <th className="w-10 px-3 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                          #
-                        </th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[110px]">
-                          Time
-                        </th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[150px]">
-                          Activity
-                        </th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[100px]">
-                          Subject
-                        </th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-20">
-                          Duration
-                        </th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-24">
-                          Priority
-                        </th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest min-w-[140px]">
-                          Notes
-                        </th>
-                        <th className="px-4 py-3 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-16">
-                          Done
-                        </th>
-                        {canEdit && (
-                          <th className="px-3 py-3 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-20">
-                            Actions
-                          </th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sorted.map((row, idx) => {
-                        const done = doneIds.has(row.id);
-                        const dur = calcDuration(row.startTime, row.endTime);
-                        const pStyle = PRIORITY_STYLES[row.priority];
-
-                        return (
-                          <tr
-                            key={row.id}
-                            className={`border-t border-border transition-colors group ${
-                              done
-                                ? "bg-emerald-500/5 hover:bg-emerald-500/8"
-                                : "hover:bg-accent/15"
-                            }`}
-                          >
-                            {/* # */}
-                            <td className="px-3 py-3 text-xs text-muted-foreground font-mono">
-                              {idx + 1}
-                            </td>
-
-                            {/* Time */}
-                            <td className="px-4 py-3">
-                              <span
-                                className={`text-xs font-mono font-semibold ${done ? "text-muted-foreground line-through" : "text-foreground"}`}
-                              >
-                                {formatTime(row.startTime, timeFormat)} –{" "}
-                                {formatTime(row.endTime, timeFormat)}
-                              </span>
-                            </td>
-
-                            {/* Activity */}
-                            <td className="px-4 py-3">
-                              <span
-                                className={`text-sm font-medium ${done ? "text-muted-foreground line-through" : "text-foreground"}`}
-                              >
-                                {row.activity}
-                              </span>
-                            </td>
-
-                            {/* Subject */}
-                            <td className="px-4 py-3">
-                              {row.subject ? (
-                                <span
-                                  className={`text-xs px-2 py-1 rounded-md bg-primary/10 text-primary border border-primary/20 font-medium ${done ? "opacity-50" : ""}`}
-                                >
-                                  {row.subject}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground/40 text-xs">
-                                  –
-                                </span>
-                              )}
-                            </td>
-
-                            {/* Duration */}
-                            <td className="px-4 py-3">
-                              <span
-                                className={`text-xs font-mono ${done ? "text-muted-foreground" : "text-foreground"}`}
-                              >
-                                {formatDuration(dur)}
-                              </span>
-                            </td>
-
-                            {/* Priority */}
-                            <td className="px-4 py-3">
-                              <span
-                                className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border font-semibold ${pStyle.badge} ${done ? "opacity-50" : ""}`}
-                              >
-                                <span
-                                  className={`w-1.5 h-1.5 rounded-full ${pStyle.dot}`}
-                                />
-                                {pStyle.label}
-                              </span>
-                            </td>
-
-                            {/* Notes */}
-                            <td className="px-4 py-3">
-                              <span
-                                className={`text-xs ${done ? "text-muted-foreground/50 line-through" : "text-muted-foreground"} max-w-[180px] block truncate`}
-                                title={row.notes}
-                              >
-                                {row.notes || "–"}
-                              </span>
-                            </td>
-
-                            {/* Done checkbox */}
-                            <td className="px-4 py-3 text-center">
-                              {dayType === "future" ? (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="inline-flex cursor-not-allowed opacity-40">
-                                      <Circle
-                                        size={20}
-                                        className="text-muted-foreground/40"
-                                      />
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent
-                                    side="top"
-                                    className="text-xs"
-                                  >
-                                    Available on that day
-                                  </TooltipContent>
-                                </Tooltip>
-                              ) : dayType === "past" ? (
-                                done ? (
-                                  <CheckCircle2
-                                    size={20}
-                                    className="text-emerald-500/50 mx-auto"
-                                  />
-                                ) : (
-                                  <Circle
-                                    size={20}
-                                    className="text-muted-foreground/25 mx-auto"
-                                  />
-                                )
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => toggleDone(row.id)}
-                                  aria-label={
-                                    done ? "Mark as not done" : "Mark as done"
-                                  }
-                                  className="transition-all hover:scale-110"
-                                >
-                                  {done ? (
-                                    <CheckCircle2
-                                      size={20}
-                                      className="text-emerald-500"
-                                    />
-                                  ) : (
-                                    <Circle
-                                      size={20}
-                                      className="text-muted-foreground/40 hover:text-emerald-400 transition-colors"
-                                    />
-                                  )}
-                                </button>
-                              )}
-                            </td>
-
-                            {/* Actions — only for editable days */}
-                            {canEdit && (
-                              <td className="px-3 py-3 text-center">
-                                <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button
-                                    type="button"
-                                    onClick={() => openEdit(row)}
-                                    aria-label="Edit task"
-                                    className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                                  >
-                                    <Pencil size={13} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDelete(row.id)}
-                                    aria-label="Delete task"
-                                    className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
-                                </div>
-                              </td>
-                            )}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-
-                    {/* Footer: total duration */}
-                    {rows.length > 0 && (
-                      <tfoot>
-                        <tr className="border-t border-border bg-card/60">
-                          <td
-                            colSpan={canEdit ? 4 : 4}
-                            className="px-4 py-2.5 text-xs text-muted-foreground font-semibold"
-                          >
-                            Total scheduled
-                          </td>
-                          <td className="px-4 py-2.5 text-xs font-mono font-bold text-primary">
-                            {formatDuration(totalDuration)}
-                          </td>
-                          <td colSpan={canEdit ? 4 : 3} className="px-4 py-2.5">
-                            {dayType !== "past" && rows.length > 0 && (
-                              <div className="flex items-center gap-2 justify-end">
-                                <Clock
-                                  size={12}
-                                  className="text-muted-foreground"
-                                />
-                                <span className="text-xs text-muted-foreground">
-                                  {doneCount}/{rows.length} complete
-                                </span>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    )}
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* ── All Days Progress Table ──────────────────────────────── */}
-            <div className="rounded-2xl border border-border bg-card/60 overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/80">
-                <div className="flex items-center gap-2">
-                  <CalendarDays size={15} className="text-primary" />
-                  <h3 className="text-sm font-bold text-foreground font-display">
-                    All Days Progress (100 Days)
-                  </h3>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs border-border text-muted-foreground hover:text-foreground gap-1.5"
-                  onClick={() => {
-                    const newStart = todayKey();
-                    setStartDate(newStart);
-                    setStartDateState(newStart);
-                    toast.success("100-day tracker reset to today");
-                  }}
-                >
-                  Set Start Date
-                </Button>
-              </div>
-              <ScrollArea className="max-h-96">
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-sm">
-                    <thead className="sticky top-0 z-10">
-                      <tr className="bg-card/95 backdrop-blur-sm">
-                        <th className="px-3 py-2 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-12">
-                          Day
-                        </th>
-                        <th className="px-3 py-2 text-left text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                          Date
-                        </th>
-                        <th className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-16">
-                          Sched
-                        </th>
-                        <th className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-14">
-                          Done
-                        </th>
-                        <th className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-20">
-                          Progress
-                        </th>
-                        <th className="px-3 py-2 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest w-14">
-                          Status
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {hundredDayData.map((entry) => {
-                        const isSelected = entry.dateKey === selectedKey;
-                        return (
-                          <tr
-                            key={entry.dateKey}
-                            onClick={() => {
-                              if (!entry.isFuture) selectDay(entry.dateKey);
-                            }}
-                            onKeyDown={(e) => {
-                              if (
-                                (e.key === "Enter" || e.key === " ") &&
-                                !entry.isFuture
-                              ) {
-                                selectDay(entry.dateKey);
+                {/* Monthly chart */}
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <h4 className="text-xs font-bold text-foreground mb-3 font-display">
+                    Monthly Progress (
+                    {new Date().toLocaleDateString("en-IN", {
+                      month: "long",
+                      year: "numeric",
+                    })}
+                    )
+                  </h4>
+                  {routineMonthlyChartData.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-44 text-muted-foreground/50 gap-2">
+                      <PieChart size={28} className="opacity-30" />
+                      <p className="text-xs">No completed tasks this month</p>
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={180}>
+                      <RechartsPieChart>
+                        <Pie
+                          data={routineMonthlyChartData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={45}
+                          outerRadius={70}
+                          paddingAngle={2}
+                          dataKey="value"
+                        >
+                          {routineMonthlyChartData.map((entry, idx) => (
+                            <Cell
+                              key={entry.name}
+                              fill={
+                                ROUTINE_SUBJECT_HEX[entry.name] ??
+                                `hsl(${(idx * 60) % 360}, 60%, 55%)`
                               }
-                            }}
-                            tabIndex={entry.isFuture ? -1 : 0}
-                            className={[
-                              "border-t border-border transition-colors cursor-pointer",
-                              entry.isToday
-                                ? "bg-primary/10 font-semibold"
-                                : "",
-                              entry.isPast ? "opacity-70" : "",
-                              isSelected
-                                ? "ring-1 ring-inset ring-primary"
-                                : "hover:bg-accent/15",
-                            ]
-                              .filter(Boolean)
-                              .join(" ")}
-                          >
-                            <td className="px-3 py-2 text-xs font-mono text-muted-foreground">
-                              <div className="flex items-center gap-1">
-                                D{entry.dayNum}
-                                {entry.isPast && (
-                                  <Lock
-                                    size={9}
-                                    className="text-muted-foreground/40"
-                                  />
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-3 py-2 text-xs text-foreground">
-                              {(() => {
-                                const [y, m, d] = entry.dateKey
-                                  .split("-")
-                                  .map(Number);
-                                return new Date(y, m - 1, d).toLocaleDateString(
-                                  "en-IN",
-                                  {
-                                    day: "numeric",
-                                    month: "short",
-                                  },
-                                );
-                              })()}
-                              {entry.isToday && (
-                                <span className="ml-1 text-[9px] text-primary font-bold">
-                                  TODAY
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-xs text-center text-muted-foreground font-mono">
-                              {entry.scheduled || <span>{"–"}</span>}
-                            </td>
-                            <td className="px-3 py-2 text-xs text-center font-mono">
-                              {entry.scheduled > 0 ? (
-                                entry.done
-                              ) : (
-                                <span>{"–"}</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-xs text-center">
-                              {entry.scheduled > 0 ? (
-                                <div className="flex items-center gap-1">
-                                  <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-                                    <div
-                                      className="h-full bg-primary rounded-full"
-                                      style={{ width: `${entry.pct}%` }}
-                                    />
-                                  </div>
-                                  <span className="text-[9px] font-mono text-primary shrink-0">
-                                    {entry.pct}%
-                                  </span>
-                                </div>
-                              ) : (
-                                <span>{"–"}</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              {entry.scheduled === 0 ? (
-                                <span className="text-muted-foreground/40 text-xs">
-                                  {"–"}
-                                </span>
-                              ) : entry.pct === 100 ? (
-                                <CheckCircle2
-                                  size={14}
-                                  className="text-emerald-400 mx-auto"
-                                />
-                              ) : entry.isFuture ? (
-                                <Circle
-                                  size={14}
-                                  className="text-muted-foreground/30 mx-auto"
-                                />
-                              ) : (
-                                <div className="flex items-center justify-center gap-0.5">
-                                  <Circle
-                                    size={14}
-                                    className={
-                                      entry.pct > 0
-                                        ? "text-amber-400"
-                                        : "text-muted-foreground/30"
-                                    }
-                                  />
-                                  {entry.pct > 0 && (
-                                    <span className="text-[8px] text-amber-400 font-bold">
-                                      {entry.pct}%
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                            />
+                          ))}
+                        </Pie>
+                        <RechartsTooltip
+                          formatter={(value: number) => [
+                            `${value} task${value !== 1 ? "s" : ""}`,
+                            "",
+                          ]}
+                          contentStyle={{
+                            background: "oklch(0.18 0.01 20)",
+                            border: "1px solid oklch(0.3 0.01 20)",
+                            borderRadius: "8px",
+                            fontSize: "11px",
+                          }}
+                        />
+                        <Legend
+                          iconType="circle"
+                          iconSize={8}
+                          wrapperStyle={{ fontSize: "10px", paddingTop: "4px" }}
+                          formatter={(value) => (
+                            <span style={{ color: "oklch(0.8 0.01 60)" }}>
+                              {value}
+                            </span>
+                          )}
+                        />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
-              </ScrollArea>
+              </div>
             </div>
-          </div>
-        </ScrollArea>
+          </DialogContent>
+        </Dialog>
 
         {/* ── Copy From Date Dialog ─────────────────────────────────────────── */}
         <Dialog open={copyDialogOpen} onOpenChange={setCopyDialogOpen}>

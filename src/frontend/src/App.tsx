@@ -202,6 +202,17 @@ export default function App() {
     [],
   );
 
+  // One-way sync: when a section timer starts, set Pomodoro to matching duration and auto-start
+  const handleSyncPomodoro = useCallback((durationSecs: number) => {
+    setTimerMode("work");
+    setCustomDefaultSeconds(durationSecs);
+    setTimeLeft(durationSecs);
+    setTimerRunning((current) => {
+      if (!current) return true;
+      return current;
+    });
+  }, []);
+
   // ─── Backend data ──────────────────────────────────────────────────────────
   const { data: subjects = [], isLoading: subjectsLoading } = useGetSubjects();
   const { data: mockScoresRaw = [], isLoading: scoresLoading } =
@@ -410,6 +421,7 @@ export default function App() {
             onSectionTimerStart={handleSectionTimerStart}
             onSectionTimerPause={handleSectionTimerPause}
             onSectionTimerUpdate={handleSectionTimerUpdate}
+            onSyncPomodoro={handleSyncPomodoro}
           />
         )}
         {activeTab === "questions" && (
@@ -417,6 +429,7 @@ export default function App() {
             onSectionTimerStart={handleSectionTimerStart}
             onSectionTimerPause={handleSectionTimerPause}
             onSectionTimerUpdate={handleSectionTimerUpdate}
+            onSyncPomodoro={handleSyncPomodoro}
           />
         )}
         {activeTab === "exam" && <ExamTab />}
