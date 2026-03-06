@@ -34,6 +34,7 @@ import {
   Clock,
   Flame,
   History,
+  Palette,
   Pause,
   PieChart,
   Play,
@@ -58,6 +59,7 @@ import {
 import { toast } from "sonner";
 import type { Section, SubjectQuestionProgress } from "../backend.d";
 import {
+  useGetCustomSubjects,
   useGetPlanCycles,
   useGetQuestionProgress,
   useGetTargets,
@@ -66,6 +68,7 @@ import {
   useSetQuestionCount,
 } from "../hooks/useQueries";
 import MonthlyPlanSection from "./MonthlyPlanSection";
+import SectionStylePanel, { useSectionStyle } from "./SectionStylePanel";
 import TargetsPanel from "./TargetsPanel";
 
 // ── localStorage helpers for timer persistence ────────────────────────────
@@ -109,6 +112,24 @@ function daysDiffQ(from: string, to: string): number {
   const a = new Date(from);
   const b = new Date(to);
   return Math.floor((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+// ── Daily question count helpers (localStorage) ──────────────────────────
+const DAILY_Q_PREFIX = "ssc_daily_q_";
+
+function getDailyQKey(subjectName: string, date: string): string {
+  return `${DAILY_Q_PREFIX}${subjectName}_${date}`;
+}
+
+function getTodayQCount(subjectName: string, today: string): number {
+  const key = getDailyQKey(subjectName, today);
+  const val = localStorage.getItem(key);
+  return val !== null ? Number(val) : 0;
+}
+
+function setTodayQCount(subjectName: string, today: string, count: number) {
+  const key = getDailyQKey(subjectName, today);
+  localStorage.setItem(key, String(count));
 }
 
 interface QuestionsTabProps {
@@ -271,6 +292,7 @@ export default function QuestionsTab({
   const { data: rawProgress = [], isLoading } = useGetQuestionProgress();
   const { data: targets } = useGetTargets();
   const { data: planCycles = [] } = useGetPlanCycles();
+  const { data: customSubjects = [] } = useGetCustomSubjects();
   const setQuestionCount = useSetQuestionCount();
   const savePlanCycleMutation = useSavePlanCycle();
   const saveSectionTimeLog = useSaveSectionTimeLog();
@@ -321,12 +343,32 @@ export default function QuestionsTab({
     return subjectTargets.map((s) => ({
       name: s.name,
       target: Number(s.target),
+      isCustom: false,
       ...(SUBJECT_DISPLAY[s.name] ?? {
         color: "text-foreground bg-muted/20 border-border",
         icon: <Target size={14} />,
       }),
     }));
   }, [targets?.subjectTargets]);
+
+  // Merged subject list: standard + custom (no duplicates)
+  const defaultSubjectNames = useMemo(
+    () => new Set(SUBJECT_TARGETS.map((s) => s.name)),
+    [SUBJECT_TARGETS],
+  );
+
+  const allSubjects = useMemo(() => {
+    const extra = customSubjects
+      .filter((name) => !defaultSubjectNames.has(name))
+      .map((name) => ({
+        name,
+        target: 0,
+        isCustom: true,
+        color: "text-orange-400 bg-orange-500/10 border-orange-500/30",
+        icon: <Target size={14} />,
+      }));
+    return [...SUBJECT_TARGETS, ...extra];
+  }, [SUBJECT_TARGETS, customSubjects, defaultSubjectNames]);
 
   // Build milestones dynamically from total goal
   const MILESTONES = useMemo(() => {
@@ -532,7 +574,10 @@ export default function QuestionsTab({
   const progressMapRef = useRef(progressMap);
   progressMapRef.current = progressMap;
 
-  const totalSolved = Object.values(progressMap).reduce((a, b) => a + b, 0);
+  const totalSolved = (rawProgress as SubjectQuestionProgress[]).reduce(
+    (a, p) => a + Number(p.count),
+    0,
+  );
   const totalPct = Math.min((totalSolved / TOTAL_GOAL) * 100, 100);
 
   const triggerSave = useCallback(
@@ -542,6 +587,11 @@ export default function QuestionsTab({
 
       setSaveStatus("saving");
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+
+      // Also save today's daily count in localStorage (sync)
+      const todayStr = new Date().toISOString().split("T")[0];
+      setTodayQCount(subj, todayStr, n);
+      setTodayQCounts((prev) => ({ ...prev, [subj]: n }));
 
       setQuestionCount.mutate(
         { subjectName: subj, count: n },
@@ -563,20 +613,12 @@ export default function QuestionsTab({
     [setQuestionCount],
   );
 
-  const handleSubjectChange = useCallback(
-    (val: string) => {
-      setSubject(val);
-      // Pre-populate with current known count
-      const currentCount = progressMapRef.current[val] ?? 0;
-      const newCountStr = String(currentCount);
-      setCountInput(newCountStr);
-      // Immediately trigger save if there's a valid count
-      if (currentCount > 0) {
-        triggerSave(val, newCountStr);
-      }
-    },
-    [triggerSave],
-  );
+  const handleSubjectChange = useCallback((val: string) => {
+    setSubject(val);
+    // Pre-populate with current known count — don't auto-save; user must manually edit count to trigger save
+    const currentCount = progressMapRef.current[val] ?? 0;
+    setCountInput(String(currentCount));
+  }, []);
 
   const handleCountChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -602,17 +644,53 @@ export default function QuestionsTab({
   // ── Progress chart dialog ─────────────────────────────────────────────────
   const [progressChartOpen, setProgressChartOpen] = useState(false);
   const [chartSelectedDate, setChartSelectedDate] = useState(today);
+  const [showStylePanel, setShowStylePanel] = useState(false);
+  const styleBtnRef = useRef<HTMLButtonElement>(null);
+  const { style: sectionStyle } = useSectionStyle("questions");
+
+  // ── Today's daily question counts (from localStorage) ────────────────────
+  const [todayQCounts, setTodayQCounts] = useState<Record<string, number>>(
+    () => {
+      const result: Record<string, number> = {};
+      return result;
+    },
+  );
+
+  // Refresh today's counts from localStorage whenever relevant data loads
+  useEffect(() => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const result: Record<string, number> = {};
+    for (const s of allSubjects) {
+      result[s.name] = getTodayQCount(s.name, todayStr);
+    }
+    setTodayQCounts(result);
+  }, [allSubjects]);
+
+  const todayTotalQ = useMemo(() => {
+    return Object.values(todayQCounts).reduce((a, b) => a + b, 0);
+  }, [todayQCounts]);
 
   // Build chart data from progressMap (cumulative — both charts show same total progress)
   const questionChartData = useMemo(() => {
-    return SUBJECT_TARGETS.map((s) => ({
-      name: s.name,
-      value: progressMapRef.current[s.name] ?? 0,
-    })).filter((e) => e.value > 0);
-  }, [SUBJECT_TARGETS]);
+    return allSubjects
+      .map((s) => ({
+        name: s.name,
+        value: progressMapRef.current[s.name] ?? 0,
+      }))
+      .filter((e) => e.value > 0);
+  }, [allSubjects]);
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto" style={sectionStyle}>
+      {/* Section Style Panel */}
+      {showStylePanel && (
+        <SectionStylePanel
+          sectionId="questions"
+          sectionLabel="Questions"
+          onClose={() => setShowStylePanel(false)}
+          anchorRef={styleBtnRef as React.RefObject<HTMLElement | null>}
+        />
+      )}
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
@@ -630,6 +708,18 @@ export default function QuestionsTab({
             Day {dayOfCycle} / 30
           </Badge>
           <div className="ml-auto flex items-center gap-2">
+            {/* Section Style */}
+            <Button
+              ref={styleBtnRef}
+              size="sm"
+              variant="outline"
+              className="h-7 w-7 p-0 border-border text-muted-foreground hover:text-primary hover:border-primary/50"
+              onClick={() => setShowStylePanel((p) => !p)}
+              title="Customize section style"
+              data-ocid="questions.style.button"
+            >
+              <Palette size={13} />
+            </Button>
             {/* Progress charts icon */}
             <Button
               size="sm"
@@ -727,6 +817,34 @@ export default function QuestionsTab({
                     </p>
                   </div>
                 </div>
+
+                {/* Today's total */}
+                <div className="mt-3 flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                  <Clock size={13} className="text-emerald-400 shrink-0" />
+                  <span className="text-xs text-emerald-400 font-semibold">
+                    Today:
+                  </span>
+                  <span className="font-mono text-xs font-bold text-emerald-300">
+                    {todayTotalQ.toLocaleString()} questions
+                  </span>
+                  {allSubjects.filter((s) => (todayQCounts[s.name] ?? 0) > 0)
+                    .length > 0 && (
+                    <span className="text-[10px] text-muted-foreground ml-auto">
+                      across{" "}
+                      {
+                        allSubjects.filter(
+                          (s) => (todayQCounts[s.name] ?? 0) > 0,
+                        ).length
+                      }{" "}
+                      subject
+                      {allSubjects.filter(
+                        (s) => (todayQCounts[s.name] ?? 0) > 0,
+                      ).length !== 1
+                        ? "s"
+                        : ""}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </CardContent>
@@ -798,7 +916,7 @@ export default function QuestionsTab({
             <CardHeader className="pb-3">
               <CardTitle className="font-display text-base font-semibold flex items-center gap-2">
                 <PlusCircle size={16} className="text-primary" />
-                Set Question Total
+                Log Questions (Today + 9000 Goal)
                 {/* Save status indicator */}
                 <span className="ml-auto">
                   {saveStatus === "saving" && (
@@ -840,9 +958,14 @@ export default function QuestionsTab({
                       <SelectValue placeholder="Select subject..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {SUBJECT_TARGETS.map((s) => (
+                      {allSubjects.map((s) => (
                         <SelectItem key={s.name} value={s.name}>
-                          {s.name} ({s.target.toLocaleString()} target)
+                          {s.name}
+                          {s.isCustom
+                            ? " (custom)"
+                            : s.target > 0
+                              ? ` (${s.target.toLocaleString()} target)`
+                              : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -862,8 +985,8 @@ export default function QuestionsTab({
                     className="bg-muted/40 border-input focus:border-primary/50 font-mono"
                   />
                   <p className="text-[10px] text-muted-foreground">
-                    Enter your running total. Auto-saves when subject and count
-                    are filled.
+                    Sets your running total for the{" "}
+                    {TOTAL_GOAL.toLocaleString()} goal AND logs today's count.
                   </p>
                 </div>
 
@@ -1020,10 +1143,14 @@ export default function QuestionsTab({
               ) : (
                 <div className="space-y-4">
                   <AnimatePresence>
-                    {SUBJECT_TARGETS.map((sub, i) => {
+                    {allSubjects.map((sub, i) => {
                       const solved = progressMap[sub.name] ?? 0;
-                      const pct = Math.min((solved / sub.target) * 100, 100);
-                      const done = solved >= sub.target;
+                      const pct =
+                        sub.target > 0
+                          ? Math.min((solved / sub.target) * 100, 100)
+                          : 0;
+                      const done = sub.target > 0 && solved >= sub.target;
+                      const todayCount = todayQCounts[sub.name] ?? 0;
                       return (
                         <motion.div
                           key={sub.name}
@@ -1038,6 +1165,11 @@ export default function QuestionsTab({
                               >
                                 {sub.icon}
                                 {sub.name}
+                                {sub.isCustom && (
+                                  <span className="text-[9px] opacity-70 ml-0.5">
+                                    custom
+                                  </span>
+                                )}
                               </span>
                               {done && (
                                 <CheckCircle2
@@ -1050,26 +1182,41 @@ export default function QuestionsTab({
                               <span className="font-mono text-xs font-bold text-foreground">
                                 {solved.toLocaleString()}
                               </span>
-                              <span className="text-[10px] text-muted-foreground">
-                                /{sub.target.toLocaleString()}
-                              </span>
+                              {sub.target > 0 && (
+                                <span className="text-[10px] text-muted-foreground">
+                                  /{sub.target.toLocaleString()}
+                                </span>
+                              )}
                             </div>
                           </div>
-                          <div className="h-2 rounded-full bg-muted overflow-hidden">
-                            <motion.div
-                              initial={{ width: 0 }}
-                              animate={{ width: `${pct}%` }}
-                              transition={{
-                                duration: 0.6,
-                                delay: 0.25 + i * 0.05,
-                                ease: "easeOut",
-                              }}
-                              className={`h-full rounded-full ${done ? "bg-primary" : "bg-primary/60"}`}
-                            />
+                          {sub.target > 0 && (
+                            <div className="h-2 rounded-full bg-muted overflow-hidden">
+                              <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${pct}%` }}
+                                transition={{
+                                  duration: 0.6,
+                                  delay: 0.25 + i * 0.05,
+                                  ease: "easeOut",
+                                }}
+                                className={`h-full rounded-full ${done ? "bg-primary" : "bg-primary/60"}`}
+                              />
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between mt-0.5">
+                            {sub.target > 0 ? (
+                              <p className="text-[10px] text-muted-foreground">
+                                {Math.round(pct)}%
+                              </p>
+                            ) : (
+                              <span />
+                            )}
+                            {todayCount > 0 && (
+                              <p className="text-[10px] text-emerald-400 font-medium">
+                                Today: {todayCount.toLocaleString()}
+                              </p>
+                            )}
                           </div>
-                          <p className="text-[10px] text-muted-foreground mt-0.5 text-right">
-                            {Math.round(pct)}%
-                          </p>
                         </motion.div>
                       );
                     })}

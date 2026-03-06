@@ -3,11 +3,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Award, BarChart3, Plus, Target, TrendingUp } from "lucide-react";
+import {
+  Award,
+  BarChart3,
+  Palette,
+  Plus,
+  Target,
+  TrendingUp,
+} from "lucide-react";
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAddMockScore } from "../hooks/useQueries";
+import SectionStylePanel, { useSectionStyle } from "./SectionStylePanel";
 
 interface AnalyticsTabProps {
   mockScores: bigint[];
@@ -43,6 +51,9 @@ export default function AnalyticsTab({
 }: AnalyticsTabProps) {
   const [scoreInput, setScoreInput] = useState("");
   const addScore = useAddMockScore();
+  const [showStylePanel, setShowStylePanel] = useState(false);
+  const styleBtnRef = useRef<HTMLButtonElement>(null);
+  const { style: sectionStyle } = useSectionStyle("analytics");
 
   const rawScores = mockScores.map(Number);
   const scores = rawScores.map((v, idx) => ({
@@ -72,15 +83,37 @@ export default function AnalyticsTab({
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-6 max-w-3xl mx-auto" style={sectionStyle}>
+      {/* Section Style Panel */}
+      {showStylePanel && (
+        <SectionStylePanel
+          sectionId="analytics"
+          sectionLabel="Analytics"
+          onClose={() => setShowStylePanel(false)}
+          anchorRef={styleBtnRef as React.RefObject<HTMLElement | null>}
+        />
+      )}
       {/* Page header */}
-      <div className="mb-6">
-        <h2 className="font-display text-2xl font-bold text-foreground">
-          Analytics
-        </h2>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Mock test scores and performance prediction
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="font-display text-2xl font-bold text-foreground">
+            Analytics
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Mock test scores and performance prediction
+          </p>
+        </div>
+        <Button
+          ref={styleBtnRef}
+          size="sm"
+          variant="outline"
+          className="h-7 w-7 p-0 border-border text-muted-foreground hover:text-primary hover:border-primary/50 shrink-0"
+          onClick={() => setShowStylePanel((p) => !p)}
+          title="Customize section style"
+          data-ocid="analytics.style.button"
+        >
+          <Palette size={13} />
+        </Button>
       </div>
 
       {/* Stats row */}

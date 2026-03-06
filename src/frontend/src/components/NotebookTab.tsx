@@ -10,6 +10,7 @@ import {
   FileText,
   List,
   Loader2,
+  Palette,
   Plus,
   Search,
   Trash2,
@@ -25,6 +26,7 @@ import {
   useGetNotebookEntries,
   useUpdateNotebookEntry,
 } from "../hooks/useQueries";
+import SectionStylePanel, { useSectionStyle } from "./SectionStylePanel";
 
 const SUBJECTS = [
   "Maths",
@@ -346,6 +348,9 @@ export default function NotebookTab() {
   const [selectedSubject, setSelectedSubject] = useState(SUBJECTS[0]);
   const [activeNoteId, setActiveNoteId] = useState<bigint | null>(null);
   const [search, setSearch] = useState("");
+  const [showStylePanel, setShowStylePanel] = useState(false);
+  const styleBtnRef = useRef<HTMLButtonElement>(null);
+  const { style: sectionStyle } = useSectionStyle("notebook");
 
   const allEntries = entries as NotebookEntry[];
 
@@ -410,15 +415,35 @@ export default function NotebookTab() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden" style={sectionStyle}>
+      {/* Section Style Panel */}
+      {showStylePanel && (
+        <SectionStylePanel
+          sectionId="notebook"
+          sectionLabel="Notebook"
+          onClose={() => setShowStylePanel(false)}
+          anchorRef={styleBtnRef as React.RefObject<HTMLElement | null>}
+        />
+      )}
       {/* Subject Sidebar */}
       <div className="w-44 shrink-0 border-r border-border flex flex-col bg-sidebar/50">
         <div className="p-3 border-b border-border">
           <div className="flex items-center gap-2">
             <BookOpen size={14} className="text-primary" />
-            <span className="font-display text-sm font-semibold text-foreground">
+            <span className="font-display text-sm font-semibold text-foreground flex-1">
               Notebook
             </span>
+            <Button
+              ref={styleBtnRef}
+              size="sm"
+              variant="ghost"
+              className="h-6 w-6 p-0 text-muted-foreground hover:text-primary"
+              onClick={() => setShowStylePanel((p) => !p)}
+              title="Customize section style"
+              data-ocid="notebook.style.button"
+            >
+              <Palette size={12} />
+            </Button>
           </div>
         </div>
 

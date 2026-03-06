@@ -6,6 +6,7 @@ import {
   Coffee,
   Flame,
   Grid3X3,
+  Palette,
   Pause,
   Play,
   RotateCcw,
@@ -16,6 +17,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { TimerMode } from "../App";
+import SectionStylePanel, { useSectionStyle } from "./SectionStylePanel";
 
 const POMODORO_DAYS_KEY = "ssc_pomodoro_days";
 const FOCUS_LOG_KEY = "ssc_focus_log";
@@ -176,6 +178,9 @@ export default function TimerTab({
   const [defaultInput, setDefaultInput] = useState(
     String(Math.round(customDefaultSeconds / 60)),
   );
+  const [showStylePanel, setShowStylePanel] = useState(false);
+  const styleBtnRef = useRef<HTMLButtonElement>(null);
+  const { style: sectionStyle } = useSectionStyle("timer");
 
   // ── Streak tracking (session-based) ──────────────────────────────────────
   const prevSessionsRef = useRef(sessions);
@@ -266,7 +271,16 @@ export default function TimerTab({
   };
 
   return (
-    <div className="p-6 max-w-lg mx-auto">
+    <div className="p-6 max-w-lg mx-auto" style={sectionStyle}>
+      {/* Section Style Panel */}
+      {showStylePanel && (
+        <SectionStylePanel
+          sectionId="timer"
+          sectionLabel="Timer"
+          onClose={() => setShowStylePanel(false)}
+          anchorRef={styleBtnRef as React.RefObject<HTMLElement | null>}
+        />
+      )}
       {/* Page header */}
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
@@ -277,18 +291,31 @@ export default function TimerTab({
             Stay focused with timed study sessions
           </p>
         </div>
-        {streak > 0 && (
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/15 border border-primary/30 shrink-0"
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            ref={styleBtnRef}
+            size="sm"
+            variant="outline"
+            className="h-7 w-7 p-0 border-border text-muted-foreground hover:text-primary hover:border-primary/50"
+            onClick={() => setShowStylePanel((p) => !p)}
+            title="Customize section style"
+            data-ocid="timer.style.button"
           >
-            <Flame size={14} className="text-primary" />
-            <span className="text-xs font-bold text-primary">
-              {streak} day{streak !== 1 ? "s" : ""}
-            </span>
-          </motion.div>
-        )}
+            <Palette size={13} />
+          </Button>
+          {streak > 0 && (
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/15 border border-primary/30"
+            >
+              <Flame size={14} className="text-primary" />
+              <span className="text-xs font-bold text-primary">
+                {streak} day{streak !== 1 ? "s" : ""}
+              </span>
+            </motion.div>
+          )}
+        </div>
       </div>
 
       {/* Mode selector */}

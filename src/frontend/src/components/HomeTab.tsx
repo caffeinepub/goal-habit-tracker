@@ -6,13 +6,16 @@ import {
   AlertTriangle,
   BookOpen,
   Calendar,
+  Palette,
   Trash2,
   TrendingUp,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Subject } from "../backend.d";
 import { useDeleteSubject, useToggleDay } from "../hooks/useQueries";
+import SectionStylePanel, { useSectionStyle } from "./SectionStylePanel";
 
 const DAYS = 30;
 
@@ -264,17 +267,42 @@ export default function HomeTab({
   const filtered = subjects.filter((s) =>
     s.name.toLowerCase().includes(search.toLowerCase()),
   );
+  const [showStylePanel, setShowStylePanel] = useState(false);
+  const styleBtnRef = useRef<HTMLButtonElement>(null);
+  const { style: sectionStyle } = useSectionStyle("home");
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto" style={sectionStyle}>
+      {/* Section Style Panel */}
+      {showStylePanel && (
+        <SectionStylePanel
+          sectionId="home"
+          sectionLabel="Dashboard"
+          onClose={() => setShowStylePanel(false)}
+          anchorRef={styleBtnRef as React.RefObject<HTMLElement | null>}
+        />
+      )}
       {/* Page header */}
-      <div className="mb-6">
-        <h2 className="font-display text-2xl font-bold text-foreground">
-          Dashboard
-        </h2>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Track your 30-day study progress
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="font-display text-2xl font-bold text-foreground">
+            Dashboard
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Track your 30-day study progress
+          </p>
+        </div>
+        <Button
+          ref={styleBtnRef}
+          size="sm"
+          variant="outline"
+          className="h-7 w-7 p-0 border-border text-muted-foreground hover:text-primary hover:border-primary/50 shrink-0"
+          onClick={() => setShowStylePanel((p) => !p)}
+          title="Customize section style"
+          data-ocid="home.style.button"
+        >
+          <Palette size={13} />
+        </Button>
       </div>
 
       {/* Dashboard summary */}

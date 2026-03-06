@@ -41,6 +41,7 @@ import {
   Copy,
   Flame,
   Lock,
+  Palette,
   Pencil,
   PieChart,
   PlusCircle,
@@ -57,6 +58,7 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import { formatTime } from "./AppearancePanel";
+import SectionStylePanel, { useSectionStyle } from "./SectionStylePanel";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -392,6 +394,9 @@ export default function DailyRoutineTab({
   // ── Progress chart dialog ─────────────────────────────────────────────────
   const [progressChartOpen, setProgressChartOpen] = useState(false);
   const [chartDateKey, setChartDateKey] = useState<string>(todayKey());
+  const [showStylePanel, setShowStylePanel] = useState(false);
+  const styleBtnRef = useRef<HTMLButtonElement>(null);
+  const { style: sectionStyle } = useSectionStyle("dailyroutine");
 
   // ── 100-day progress table ────────────────────────────────────────────────
   const [startDate, setStartDateState] = useState(getStartDate);
@@ -845,7 +850,19 @@ export default function DailyRoutineTab({
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col h-screen bg-background overflow-hidden">
+      <div
+        className="flex flex-col h-screen bg-background overflow-hidden"
+        style={sectionStyle}
+      >
+        {/* Section Style Panel */}
+        {showStylePanel && (
+          <SectionStylePanel
+            sectionId="dailyroutine"
+            sectionLabel="Daily Routine"
+            onClose={() => setShowStylePanel(false)}
+            anchorRef={styleBtnRef as React.RefObject<HTMLElement | null>}
+          />
+        )}
         {/* Header */}
         <header className="px-6 py-4 border-b border-border bg-card/40 shrink-0">
           <div className="flex items-center gap-4 mb-3">
@@ -860,6 +877,17 @@ export default function DailyRoutineTab({
                 Plan, track, and review your daily schedule
               </p>
             </div>
+            {/* Section Style */}
+            <button
+              ref={styleBtnRef}
+              type="button"
+              onClick={() => setShowStylePanel((p) => !p)}
+              className="w-8 h-8 rounded-lg border border-border text-muted-foreground hover:text-primary hover:border-primary/50 flex items-center justify-center transition-colors"
+              title="Customize section style"
+              data-ocid="routine.style.button"
+            >
+              <Palette size={15} />
+            </button>
             {/* Progress chart icon */}
             <button
               type="button"

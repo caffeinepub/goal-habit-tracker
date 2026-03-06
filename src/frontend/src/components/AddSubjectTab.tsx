@@ -3,11 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { BookOpen, PlusCircle } from "lucide-react";
+import { BookOpen, Palette, PlusCircle } from "lucide-react";
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAddSubject } from "../hooks/useQueries";
+import SectionStylePanel, { useSectionStyle } from "./SectionStylePanel";
 
 const SUBJECT_TEMPLATES = [
   {
@@ -36,6 +37,9 @@ export default function AddSubjectTab() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const addSubject = useAddSubject();
+  const [showStylePanel, setShowStylePanel] = useState(false);
+  const styleBtnRef = useRef<HTMLButtonElement>(null);
+  const { style: sectionStyle } = useSectionStyle("addsubject");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,15 +66,37 @@ export default function AddSubjectTab() {
   };
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="p-6 max-w-2xl mx-auto" style={sectionStyle}>
+      {/* Section Style Panel */}
+      {showStylePanel && (
+        <SectionStylePanel
+          sectionId="addsubject"
+          sectionLabel="Add Subject"
+          onClose={() => setShowStylePanel(false)}
+          anchorRef={styleBtnRef as React.RefObject<HTMLElement | null>}
+        />
+      )}
       {/* Page header */}
-      <div className="mb-6">
-        <h2 className="font-display text-2xl font-bold text-foreground">
-          Add Subject
-        </h2>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Add a new subject to your 30-day tracker
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="font-display text-2xl font-bold text-foreground">
+            Add Subject
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Add a new subject to your 30-day tracker
+          </p>
+        </div>
+        <Button
+          ref={styleBtnRef}
+          size="sm"
+          variant="outline"
+          className="h-7 w-7 p-0 border-border text-muted-foreground hover:text-primary hover:border-primary/50 shrink-0"
+          onClick={() => setShowStylePanel((p) => !p)}
+          title="Customize section style"
+          data-ocid="addsubject.style.button"
+        >
+          <Palette size={13} />
+        </Button>
       </div>
 
       {/* Form */}

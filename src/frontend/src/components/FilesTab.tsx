@@ -10,6 +10,7 @@ import {
   FileVideo,
   FolderOpen,
   Loader2,
+  Palette,
   Trash2,
   Upload,
   X,
@@ -18,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { FileMetadata } from "../backend.d";
 import { useActor } from "../hooks/useActor";
+import SectionStylePanel, { useSectionStyle } from "./SectionStylePanel";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -96,6 +98,9 @@ export default function FilesTab() {
   const [deletingId, setDeletingId] = useState<bigint | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
+  const [showStylePanel, setShowStylePanel] = useState(false);
+  const styleBtnRef = useRef<HTMLButtonElement>(null);
+  const { style: sectionStyle } = useSectionStyle("files");
 
   // ── Load files ──────────────────────────────────────────────────────────────
   const loadFiles = useCallback(async () => {
@@ -288,11 +293,21 @@ export default function FilesTab() {
   return (
     <div
       className="flex flex-col h-screen bg-background overflow-hidden"
+      style={sectionStyle}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
+      {/* Section Style Panel */}
+      {showStylePanel && (
+        <SectionStylePanel
+          sectionId="files"
+          sectionLabel="Files"
+          onClose={() => setShowStylePanel(false)}
+          anchorRef={styleBtnRef as React.RefObject<HTMLElement | null>}
+        />
+      )}
       {/* Drag overlay */}
       {dragging && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-primary/10 border-4 border-dashed border-primary rounded-xl pointer-events-none">
@@ -323,6 +338,18 @@ export default function FilesTab() {
             </span>
           </div>
         )}
+
+        <Button
+          ref={styleBtnRef}
+          size="sm"
+          variant="outline"
+          className="h-9 w-9 p-0 border-border text-muted-foreground hover:text-primary hover:border-primary/50"
+          onClick={() => setShowStylePanel((p) => !p)}
+          title="Customize section style"
+          data-ocid="files.style.button"
+        >
+          <Palette size={14} />
+        </Button>
 
         <Button
           onClick={() => fileInputRef.current?.click()}

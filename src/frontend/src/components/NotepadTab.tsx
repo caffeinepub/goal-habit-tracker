@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   CheckCircle2,
   Loader2,
+  Palette,
   Plus,
   Search,
   StickyNote,
@@ -21,6 +22,7 @@ import {
   useGetNotepadEntries,
   useUpdateNotepadEntry,
 } from "../hooks/useQueries";
+import SectionStylePanel, { useSectionStyle } from "./SectionStylePanel";
 
 const SUBJECTS = [
   "Maths",
@@ -210,6 +212,9 @@ export default function NotepadTab() {
 
   const [activeSubject, setActiveSubject] = useState(SUBJECTS[0]);
   const [search, setSearch] = useState("");
+  const [showStylePanel, setShowStylePanel] = useState(false);
+  const styleBtnRef = useRef<HTMLButtonElement>(null);
+  const { style: sectionStyle } = useSectionStyle("notepad");
 
   const allEntries = entries as NotepadEntry[];
 
@@ -275,7 +280,16 @@ export default function NotepadTab() {
   );
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto" style={sectionStyle}>
+      {/* Section Style Panel */}
+      {showStylePanel && (
+        <SectionStylePanel
+          sectionId="notepad"
+          sectionLabel="Notepad"
+          onClose={() => setShowStylePanel(false)}
+          anchorRef={styleBtnRef as React.RefObject<HTMLElement | null>}
+        />
+      )}
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
@@ -286,9 +300,20 @@ export default function NotepadTab() {
           <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
             <StickyNote size={16} className="text-primary" />
           </div>
-          <h2 className="font-display text-2xl font-bold text-foreground">
+          <h2 className="font-display text-2xl font-bold text-foreground flex-1">
             Quick Notepad
           </h2>
+          <Button
+            ref={styleBtnRef}
+            size="sm"
+            variant="outline"
+            className="h-7 w-7 p-0 border-border text-muted-foreground hover:text-primary hover:border-primary/50"
+            onClick={() => setShowStylePanel((p) => !p)}
+            title="Customize section style"
+            data-ocid="notepad.style.button"
+          >
+            <Palette size={13} />
+          </Button>
         </div>
         <p className="text-sm text-muted-foreground ml-11">
           Subject-wise scratch pad for quick notes, formulas, and rough work

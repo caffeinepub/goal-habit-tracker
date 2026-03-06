@@ -9,6 +9,7 @@ import {
   Clipboard,
   Columns,
   Italic,
+  Palette,
   PlusCircle,
   Rows,
   Table as TableIcon,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import SectionStylePanel, { useSectionStyle } from "./SectionStylePanel";
 
 interface TableCell {
   text: string;
@@ -67,6 +69,9 @@ export default function TableMakerTab() {
 
   // debounce ref for auto-save
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showStylePanel, setShowStylePanel] = useState(false);
+  const styleBtnRef = useRef<HTMLButtonElement>(null);
+  const { style: sectionStyle } = useSectionStyle("tablemaker");
 
   const persistTables = useCallback((updated: TrackerTable[]) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -171,13 +176,38 @@ export default function TableMakerTab() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div
+      className="flex h-screen overflow-hidden bg-background"
+      style={sectionStyle}
+    >
+      {/* Section Style Panel */}
+      {showStylePanel && (
+        <SectionStylePanel
+          sectionId="tablemaker"
+          sectionLabel="Table Maker"
+          onClose={() => setShowStylePanel(false)}
+          anchorRef={styleBtnRef as React.RefObject<HTMLElement | null>}
+        />
+      )}
       {/* Left Panel: Table list */}
       <aside className="w-64 shrink-0 border-r border-border flex flex-col bg-sidebar">
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2 mb-3">
             <TableIcon size={16} className="text-primary" />
-            <h2 className="text-sm font-bold text-foreground">Table Maker</h2>
+            <h2 className="text-sm font-bold text-foreground flex-1">
+              Table Maker
+            </h2>
+            <Button
+              ref={styleBtnRef}
+              size="sm"
+              variant="ghost"
+              className="h-6 w-6 p-0 text-muted-foreground hover:text-primary"
+              onClick={() => setShowStylePanel((p) => !p)}
+              title="Customize section style"
+              data-ocid="tablemaker.style.button"
+            >
+              <Palette size={12} />
+            </Button>
           </div>
           <Button
             size="sm"

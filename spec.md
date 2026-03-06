@@ -1,43 +1,33 @@
 # SSC CGL Ultimate Tracker
 
 ## Current State
-Full-stack study tracker with: Home, Add Subject, Analytics, Pomodoro Timer (with floating widget), Study Plan, Questions (9000 challenge + monthly plan), Exam Mode, Notebook, Notepad, Daily Routine (monthly calendar scheduler), Table Maker, Files, and Appearance Panel. Authentication via Internet Identity. Data persisted to ICP backend canister.
+- Full-featured study tracker with: Home, Add Subject, Analytics, Pomodoro Timer, Study Plan, Questions, Exam, Notebook, Notepad, Daily Routine, Table Maker, Files tabs
+- Global Appearance panel (palette icon in sidebar) controls theme, font, font size, accent color, text color, rainbow text, custom theme builder
+- Questions tab has a "Log Questions" form with subject select + count input + timer + per-question time control; Subject Breakdown card; Monthly Plan section; Progress chart dialog; History dialog
+- Known issue: the Questions section "Log Questions" form has a bug -- when subject is pre-populated from backend, calling `triggerSave` inside `handleSubjectChange` can cause a race condition / validation failure, and the count input sometimes resets or shows stale data
 
 ## Requested Changes (Diff)
 
 ### Add
-- **Time format toggle (12h/24h)** -- global setting in Appearance Panel; affects all time displays across app
-- **Draggable floating timer widget** -- user can drag the mini timer window to any position on screen (not fixed bottom-right)
-- **Study Plan -- actual elapsed time display** -- Today's Progress section shows real elapsed time (HH:MM:SS live clock) not just the selected/planned hours
-- **Daily Routine -- progress slider** -- horizontal progress bar / slider showing completion % of today's tasks
-- **Daily Routine -- AM/PM time format** -- time picker fields show AM/PM selector alongside time input; stored internally as 24h but displayed in 12h/24h per global setting
-- **Daily Routine -- copy any date's tasks** -- "Copy from Date" button lets user pick any past date and copy its schedule to current day (not just yesterday)
-- **Daily Routine -- all-days progress table** -- separate table section below calendar showing all 100 days with columns: Day#, Date, Tasks, Done, Progress%, Streak indicator, tick marks; present day editable, past days locked
-- **Daily Routine -- streak counter** -- consecutive days where all tasks are completed, shown as flame streak
-- **Daily Routine -- progress in percentage** -- show % completion (done/total tasks) prominently in header and table
-- **Pomodoro -- save focus time day-wise** -- store total focused minutes per day in localStorage; show daily history table
-- **Pomodoro -- streak for target time** -- configurable daily target (default 15h = 900 min); track streak of consecutive days meeting target; show streak flame badge
-- **Theme -- custom theme builder** -- "Build Your Own Theme" section in Appearance Panel: pick bg color, card color, border color, accent color, text color, merge 2 colors with a gradient option, preview live
-- **Notifications section** -- new "Notifications" tab or panel (bell icon in sidebar footer): shows reminders for daily routine incomplete tasks, study plan remaining hours, questions remaining count; toggleable notification preferences
-- **Questions -- per-question solve time** -- customizable timer per question from 10 seconds to 5 minutes (10s, 30s, 1m, 2m, 3m, 5m presets + custom slider); shown in exam/practice mode
+- **Per-section appearance icon**: A small palette/color icon button in the header of each main section (Study Plan, Questions, Daily Routine, Pomodoro/Timer, Exam, Notebook, Notepad, Home, Analytics, Table Maker, Add Subject, Files). When clicked, opens a compact per-section style panel (popover/dialog) letting the user choose:
+  - Font family (from same FONT_OPTIONS list)
+  - Font size (slider 12–22px)
+  - Text color (presets + custom color picker)
+  - Accent/highlight color for that section
+  - These settings are stored per-section in localStorage (key: `ssc_section_style_<sectionId>`) and applied via inline CSS on the section wrapper div
 
 ### Modify
-- **FloatingTimerWidget** -- make draggable via mouse/touch drag events; remember last position in localStorage
-- **AppearancePanel** -- add time format toggle (12h/24h), add custom theme builder section with color pickers and gradient merge
-- **DailyRoutineTab** -- add progress slider, AM/PM time display, copy-any-date feature, all-days progress table with streak + ticks + lock, % progress display
-- **TimerTab** -- add daily focus time log table (day-wise), configurable target hours for streak (default 15h), persist and display total focused minutes per day
-- **QuestionsTab** -- add per-question solve time selector (10s–5min)
-- **Sidebar** -- add Notifications bell icon in footer area
+- **Questions section bug fix**: 
+  - In `handleSubjectChange`, do NOT call `triggerSave` immediately when pre-populating; only set the display value. Only save when the user manually changes the count input.
+  - Fix the count input so it correctly shows the current backend count when a subject is selected (read from `progressMap` not stale ref)
+  - Ensure `setTodayQCounts` is defined before `triggerSave` calls it (move or restructure)
+  - The `setTodayQCounts` call inside `triggerSave` needs the setter to be stable
 
 ### Remove
 - Nothing removed
 
 ## Implementation Plan
-1. Make FloatingTimerWidget draggable (mouse + touch, save position to localStorage)
-2. Add 12h/24h time format toggle to AppearancePanel and propagate via context/prop to DailyRoutine time displays
-3. Update StudyPlanTab Today's Progress to show live elapsed time (HH:MM:SS stopwatch) alongside planned hours
-4. DailyRoutineTab: add % progress bar/slider, AM/PM time picker, copy-from-any-date dialog, all-100-days progress table with streak/ticks/lock logic
-5. TimerTab: add per-day focus time tracking table, configurable target hours, streak calculation against target
-6. QuestionsTab: add per-question solve time setting (10s–5min slider/presets)
-7. AppearancePanel: add custom theme builder (bg/card/border/accent color pickers, gradient merge, live preview)
-8. Add NotificationsPanel component + bell icon in Sidebar footer; show reminders for routine/study/questions
+1. Create a `SectionStylePanel` component: compact popover with font family select, font size slider, text color picker (presets + custom), accent color picker. Accepts `sectionId`, `onClose`. Reads/writes localStorage key `ssc_section_style_<sectionId>`. Returns a `useSectionStyle(sectionId)` hook that returns `{fontFamily, fontSize, textColor, accentColor}` as inline style object.
+2. Add a small palette icon button to each section's header (Study Plan, Questions, Daily Routine, Timer, Exam, Notebook, Notepad, Home, Analytics, Table Maker, AddSubject, Files). When clicked, toggles the SectionStylePanel popover.
+3. In each section's root wrapper div, apply `style={sectionStyle}` from the hook.
+4. Fix Questions tab: restructure `handleSubjectChange` to not auto-save, fix count pre-population, ensure `setTodayQCounts` is not called before it's defined.

@@ -872,3 +872,14 @@
     );
   }
 }
+
+/* ── Rainbow text animation ─────────────────────────────────────────────── */
+@keyframes rainbow-hue {
+  0%   { filter: hue-rotate(0deg); }
+  100% { filter: hue-rotate(360deg); }
+}
+
+html.rainbow-text,
+html.rainbow-text * {
+  animation: rainbow-hue 3s linear infinite !important;
+}

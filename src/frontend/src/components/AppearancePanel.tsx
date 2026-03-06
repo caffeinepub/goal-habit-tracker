@@ -1,11 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import {
   ALargeSmall,
   Clock,
   Moon,
   Palette,
+  Sparkles,
   Sun,
   SunMedium,
   Type,
@@ -47,6 +49,7 @@ export interface AppearanceSettings {
   fontSize: number; // 12–22 px
   accentColor: string; // custom accent override
   timeFormat: "12h" | "24h"; // time display format
+  rainbowText: boolean; // cycle all text through rainbow colors
 }
 
 // ─── Time format helper ───────────────────────────────────────────────────────
@@ -896,6 +899,39 @@ export default function AppearancePanel({
             </div>
           </div>
 
+          {/* ── Rainbow Text ────────────────────────────────────────────── */}
+          <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide flex items-center gap-1.5">
+                <Sparkles size={13} />
+                Rainbow Text
+              </Label>
+              <Switch
+                checked={settings.rainbowText ?? false}
+                onCheckedChange={(checked) => {
+                  onChange({ rainbowText: checked });
+                  if (checked) {
+                    document.documentElement.classList.add("rainbow-text");
+                  } else {
+                    document.documentElement.classList.remove("rainbow-text");
+                  }
+                }}
+                data-ocid="appearance.rainbow_text.toggle"
+              />
+            </div>
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
+              All text cycles through rainbow colours simultaneously
+            </p>
+            {(settings.rainbowText ?? false) && (
+              <p
+                className="text-xs font-bold text-center py-1"
+                style={{ animation: "rainbow-hue 3s linear infinite" }}
+              >
+                ✨ Rainbow mode active ✨
+              </p>
+            )}
+          </div>
+
           {/* Reset All */}
           <Button
             variant="outline"
@@ -904,6 +940,7 @@ export default function AppearancePanel({
             onClick={() => {
               clearCustomTheme();
               setCustomApplied(false);
+              document.documentElement.classList.remove("rainbow-text");
               onChange({
                 theme: "dark",
                 textColor: "#e8e0d0",
@@ -911,6 +948,7 @@ export default function AppearancePanel({
                 fontSize: 15,
                 accentColor: "#c0392b",
                 timeFormat: "12h",
+                rainbowText: false,
               });
             }}
           >

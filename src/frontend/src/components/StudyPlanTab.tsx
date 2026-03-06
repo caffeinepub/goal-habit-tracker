@@ -41,6 +41,7 @@ import {
   Clock,
   Flame,
   History,
+  Palette,
   Pause,
   PieChart,
   Play,
@@ -76,6 +77,7 @@ import {
   useSetCustomSubjects,
   useSetStudySession,
 } from "../hooks/useQueries";
+import SectionStylePanel, { useSectionStyle } from "./SectionStylePanel";
 import TargetsPanel from "./TargetsPanel";
 
 const SSC_SUBJECTS = [
@@ -694,6 +696,9 @@ export default function StudyPlanTab({
   // ── Progress chart dialog ─────────────────────────────────────────────────
   const [progressChartOpen, setProgressChartOpen] = useState(false);
   const [chartSelectedDate, setChartSelectedDate] = useState(today);
+  const [showStylePanel, setShowStylePanel] = useState(false);
+  const styleBtnRef = useRef<HTMLButtonElement>(null);
+  const { style: sectionStyle } = useSectionStyle("studyplan");
 
   // ── Extra time rows from localStorage ────────────────────────────────────
   const [questionsSectionTime, setQuestionsSectionTime] = useState(0);
@@ -769,7 +774,16 @@ export default function StudyPlanTab({
   const studyPlanCycles = planCycles.filter((c) => c.section === "studyplan");
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto" style={sectionStyle}>
+      {/* Section Style Panel */}
+      {showStylePanel && (
+        <SectionStylePanel
+          sectionId="studyplan"
+          sectionLabel="Study Plan"
+          onClose={() => setShowStylePanel(false)}
+          anchorRef={styleBtnRef as React.RefObject<HTMLElement | null>}
+        />
+      )}
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
@@ -788,6 +802,18 @@ export default function StudyPlanTab({
             Day {dayOfCycle} / 30
           </Badge>
           <div className="ml-auto flex items-center gap-2">
+            {/* Section Style */}
+            <Button
+              ref={styleBtnRef}
+              size="sm"
+              variant="outline"
+              className="h-7 w-7 p-0 border-border text-muted-foreground hover:text-primary hover:border-primary/50"
+              onClick={() => setShowStylePanel((p) => !p)}
+              title="Customize section style"
+              data-ocid="studyplan.style.button"
+            >
+              <Palette size={13} />
+            </Button>
             {/* Progress charts icon */}
             <Button
               size="sm"

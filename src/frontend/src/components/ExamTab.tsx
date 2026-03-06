@@ -25,6 +25,7 @@ import {
   GraduationCap,
   History,
   Loader2,
+  Palette,
   Plus,
   RefreshCw,
   Save,
@@ -47,6 +48,7 @@ import {
   useGetQuestions,
   useSaveExamSession,
 } from "../hooks/useQueries";
+import SectionStylePanel, { useSectionStyle } from "./SectionStylePanel";
 
 const SUBJECTS = [
   "Maths",
@@ -1501,6 +1503,9 @@ function ExamHistoryView() {
 // ── Main ExamTab ─────────────────────────────────────────────────────────────
 export default function ExamTab() {
   const [view, setView] = useState<ExamView>("bank");
+  const [showStylePanel, setShowStylePanel] = useState(false);
+  const styleBtnRef = useRef<HTMLButtonElement>(null);
+  const { style: sectionStyle } = useSectionStyle("exam");
 
   const viewConfig: Record<ExamView, { label: string; icon: React.ReactNode }> =
     {
@@ -1510,7 +1515,16 @@ export default function ExamTab() {
     };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto" style={sectionStyle}>
+      {/* Section Style Panel */}
+      {showStylePanel && (
+        <SectionStylePanel
+          sectionId="exam"
+          sectionLabel="Exam"
+          onClose={() => setShowStylePanel(false)}
+          anchorRef={styleBtnRef as React.RefObject<HTMLElement | null>}
+        />
+      )}
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
@@ -1524,6 +1538,19 @@ export default function ExamTab() {
           <h2 className="font-display text-2xl font-bold text-foreground">
             Exam Mode
           </h2>
+          <div className="ml-auto">
+            <Button
+              ref={styleBtnRef}
+              size="sm"
+              variant="outline"
+              className="h-7 w-7 p-0 border-border text-muted-foreground hover:text-primary hover:border-primary/50"
+              onClick={() => setShowStylePanel((p) => !p)}
+              title="Customize section style"
+              data-ocid="exam.style.button"
+            >
+              <Palette size={13} />
+            </Button>
+          </div>
         </div>
         <p className="text-sm text-muted-foreground ml-11">
           Build your question bank, take timed exams, and track your performance

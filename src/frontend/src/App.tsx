@@ -65,6 +65,7 @@ const DEFAULT_APPEARANCE: AppearanceSettings = {
   fontSize: 15,
   accentColor: "#c0392b",
   timeFormat: "12h",
+  rainbowText: false,
 };
 
 function loadAppearance(): AppearanceSettings {
@@ -82,6 +83,7 @@ function loadAppearance(): AppearanceSettings {
     fontSize: 15,
     accentColor: "#c0392b",
     timeFormat: "12h" as const,
+    rainbowText: false,
   };
 }
 
@@ -157,6 +159,15 @@ export default function App() {
       appearance.accentColor,
     );
   }, [appearance.accentColor]);
+
+  // Apply rainbow text class
+  useEffect(() => {
+    if (appearance.rainbowText) {
+      document.documentElement.classList.add("rainbow-text");
+    } else {
+      document.documentElement.classList.remove("rainbow-text");
+    }
+  }, [appearance.rainbowText]);
 
   // ─── Timer state (lifted to App for floating widget) ──────────────────────
   const [timerMode, setTimerMode] = useState<TimerMode>("work");
