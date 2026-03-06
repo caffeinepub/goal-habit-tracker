@@ -495,25 +495,37 @@ export default function QuestionsTab({
     }
   }, [subject, countInput, perQTimeSecs, saveQTimerState]);
 
+  // Keep stable refs for callbacks so the interval doesn't need them in deps
+  const subjectRef = useRef(subject);
+  subjectRef.current = subject;
+  const countInputRef = useRef(countInput);
+  countInputRef.current = countInput;
+  const qTimerInitialRef = useRef(qTimerInitial);
+  qTimerInitialRef.current = qTimerInitial;
+  const onSectionTimerPauseRef = useRef(onSectionTimerPause);
+  onSectionTimerPauseRef.current = onSectionTimerPause;
+  const onSectionTimerUpdateRef = useRef(onSectionTimerUpdate);
+  onSectionTimerUpdateRef.current = onSectionTimerUpdate;
+
   // Countdown tick with persistence and section time tracking
   useEffect(() => {
     if (qTimerRunning) {
       qTimerIntervalRef.current = setInterval(() => {
         qElapsedRef.current += 1;
         addQSectionTimeToday(1);
-        onSectionTimerUpdate?.(subject, qTimerSecs, true);
         setQTimerSecs((s) => {
           const next = s <= 1 ? 0 : s - 1;
+          onSectionTimerUpdateRef.current?.(subjectRef.current, next, true);
           if (s <= 1) {
             setQTimerRunning(false);
             toast.success("Question session complete!");
-            onSectionTimerPause?.();
+            onSectionTimerPauseRef.current?.();
           }
           saveQTimerState(
-            subject,
-            countInput,
+            subjectRef.current,
+            countInputRef.current,
             next,
-            qTimerInitial,
+            qTimerInitialRef.current,
             s > 1,
             qElapsedRef.current,
           );
@@ -523,6 +535,25 @@ export default function QuestionsTab({
     } else {
       if (qTimerIntervalRef.current) clearInterval(qTimerIntervalRef.current);
       saveQTimerState(
+        subjectRef.current,
+        countInputRef.current,
+        // Read current secs from ref-captured state via functional updater below
+        // We write state below in a separate effect when paused
+        0, // placeholder — overwritten by the pause-save effect
+        qTimerInitialRef.current,
+        false,
+        qElapsedRef.current,
+      );
+    }
+    return () => {
+      if (qTimerIntervalRef.current) clearInterval(qTimerIntervalRef.current);
+    };
+  }, [qTimerRunning, saveQTimerState]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When timer is paused, persist the current secs accurately
+  useEffect(() => {
+    if (!qTimerRunning) {
+      saveQTimerState(
         subject,
         countInput,
         qTimerSecs,
@@ -531,19 +562,14 @@ export default function QuestionsTab({
         qElapsedRef.current,
       );
     }
-    return () => {
-      if (qTimerIntervalRef.current) clearInterval(qTimerIntervalRef.current);
-    };
   }, [
     qTimerRunning,
     subject,
     countInput,
-    qTimerInitial,
     qTimerSecs,
+    qTimerInitial,
     saveQTimerState,
-    onSectionTimerPause,
-    onSectionTimerUpdate,
-  ]);
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Save section time log to backend on unmount
   useEffect(() => {
