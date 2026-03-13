@@ -40,7 +40,10 @@ export type AppTheme =
   | "catppuccin-latte"
   | "one-dark"
   | "material-dark"
-  | "gruvbox";
+  | "gruvbox"
+  | "pure-black"
+  | "pure-white"
+  | "soft-light";
 
 export interface AppearanceSettings {
   theme: AppTheme;
@@ -254,6 +257,30 @@ export const THEMES: ThemeDef[] = [
     accent: "#b8bb26",
     cssClass: "theme-gruvbox",
   },
+  {
+    id: "pure-black",
+    label: "Pure Black",
+    icon: <Moon size={12} />,
+    bg: "#000000",
+    accent: "#ffffff",
+    cssClass: "theme-pure-black",
+  },
+  {
+    id: "pure-white",
+    label: "Pure White",
+    icon: <Sun size={12} />,
+    bg: "#ffffff",
+    accent: "#000000",
+    cssClass: "theme-pure-white",
+  },
+  {
+    id: "soft-light",
+    label: "Soft Light",
+    icon: <SunMedium size={12} />,
+    bg: "#f5f0eb",
+    accent: "#c0392b",
+    cssClass: "theme-soft-light",
+  },
 ];
 
 // ─── Accent color presets ─────────────────────────────────────────────────────
@@ -351,7 +378,7 @@ function loadCustomTheme(): CustomThemeColors {
   }
 }
 
-function applyCustomTheme(ct: CustomThemeColors) {
+export function applyCustomTheme(ct: CustomThemeColors) {
   const root = document.documentElement;
   const bg = ct.gradient
     ? `linear-gradient(${ct.gradientDir}, ${ct.bg}, ${ct.gradientColor2})`
@@ -863,6 +890,7 @@ export default function AppearancePanel({
                 className="flex-1 text-xs bg-primary hover:bg-primary/90 text-primary-foreground"
                 onClick={() => {
                   applyCustomTheme(customTheme);
+                  localStorage.setItem("ssc_custom_theme_applied", "1");
                   setCustomApplied(true);
                 }}
               >
@@ -878,6 +906,7 @@ export default function AppearancePanel({
                     JSON.stringify(customTheme),
                   );
                   applyCustomTheme(customTheme);
+                  localStorage.setItem("ssc_custom_theme_applied", "1");
                   setCustomApplied(true);
                 }}
               >
@@ -890,6 +919,7 @@ export default function AppearancePanel({
                   className="text-xs text-muted-foreground hover:text-destructive px-2"
                   onClick={() => {
                     clearCustomTheme();
+                    localStorage.setItem("ssc_custom_theme_applied", "0");
                     setCustomApplied(false);
                   }}
                 >
@@ -939,6 +969,7 @@ export default function AppearancePanel({
             className="w-full text-xs border-border text-muted-foreground hover:text-foreground"
             onClick={() => {
               clearCustomTheme();
+              localStorage.setItem("ssc_custom_theme_applied", "0");
               setCustomApplied(false);
               document.documentElement.classList.remove("rainbow-text");
               onChange({

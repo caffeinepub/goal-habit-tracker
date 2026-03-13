@@ -7,6 +7,7 @@ import {
   BookOpen,
   CalendarDays,
   Clock,
+  Download,
   FolderOpen,
   GraduationCap,
   Home,
@@ -21,9 +22,10 @@ import {
   User,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TabId } from "../App";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
+import DataPortal from "./DataPortal";
 
 interface SidebarProps {
   activeTab: TabId;
@@ -114,6 +116,40 @@ export default function Sidebar({
   const { identity, clear } = useInternetIdentity();
   const principalStr = identity?.getPrincipal().toString() ?? "";
   const [notifCount, setNotifCount] = useState(0);
+
+  // PWA install prompt
+  // biome-ignore lint/suspicious/noExplicitAny: BeforeInstallPromptEvent is non-standard
+  const installPromptRef = useRef<any>(null);
+  const [canInstall, setCanInstall] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+
+  useEffect(() => {
+    if (window.matchMedia("(display-mode: standalone)").matches) {
+      setIsInstalled(true);
+      return;
+    }
+    const handler = (e: Event) => {
+      e.preventDefault();
+      installPromptRef.current = e;
+      setCanInstall(true);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    window.addEventListener("appinstalled", () => {
+      setIsInstalled(true);
+      setCanInstall(false);
+    });
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const handleInstall = async () => {
+    if (!installPromptRef.current) return;
+    installPromptRef.current.prompt();
+    const { outcome } = await installPromptRef.current.userChoice;
+    if (outcome === "accepted") {
+      setCanInstall(false);
+      installPromptRef.current = null;
+    }
+  };
 
   useEffect(() => {
     setNotifCount(computeNotificationCount());
@@ -209,17 +245,17 @@ export default function Sidebar({
           </div>
         )}
 
-        {/* Appearance + Notifications + Logout row */}
-        <div className="flex gap-1.5">
+        {/* Appearance + Notifications + Import/Export + Logout row */}
+        <div className="flex gap-1.5 flex-wrap">
           <Button
             variant="ghost"
             size="sm"
             onClick={onOpenAppearance}
-            className="flex-1 h-7 text-xs text-muted-foreground hover:text-primary hover:bg-primary/10 gap-1.5 justify-start"
+            className="flex-1 h-7 text-xs text-muted-foreground hover:text-primary hover:bg-primary/10 gap-1.5 justify-start min-w-0"
             title="Appearance Settings"
           >
             <Palette size={12} />
-            Appearance
+            <span className="truncate">Appearance</span>
           </Button>
           <Button
             variant="ghost"
@@ -238,6 +274,20 @@ export default function Sidebar({
               </span>
             )}
           </Button>
+          <DataPortal />
+          {canInstall && !isInstalled && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleInstall}
+              className="flex-1 h-7 text-xs text-muted-foreground hover:text-primary hover:bg-primary/10 gap-1.5 justify-start min-w-0"
+              title="Install as App"
+              data-ocid="sidebar.install.button"
+            >
+              <Download size={12} />
+              <span className="truncate">Install App</span>
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"

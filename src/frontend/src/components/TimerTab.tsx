@@ -22,6 +22,7 @@ import SectionStylePanel, { useSectionStyle } from "./SectionStylePanel";
 const POMODORO_DAYS_KEY = "ssc_pomodoro_days";
 const FOCUS_LOG_KEY = "ssc_focus_log";
 const FOCUS_TARGET_KEY = "ssc_daily_focus_target";
+const FOCUS_LIVE_PREFIX = "ssc_focus_live_";
 
 function getTodayDateStr(): string {
   return new Date().toISOString().split("T")[0];
@@ -56,9 +57,33 @@ function saveFocusLog(log: Record<string, number>) {
 function loadFocusTarget(): number {
   try {
     const s = localStorage.getItem(FOCUS_TARGET_KEY);
-    return s ? Number(s) : 900; // default 15 hours = 900 min
+    return s ? Number(s) : 900; // default 15 hours = 900 min (stored in minutes)
   } catch {
     return 900;
+  }
+}
+
+function getLiveFocusKey(date: string): string {
+  return `${FOCUS_LIVE_PREFIX}${date}`;
+}
+
+function mergeLiveFocusOnMount(
+  setFocusLog: React.Dispatch<React.SetStateAction<Record<string, number>>>,
+) {
+  // Merge any stale live focus key from a previous crash/close
+  const today = getTodayDateStr();
+  const liveKey = getLiveFocusKey(today);
+  const liveSecs = Number(localStorage.getItem(liveKey) ?? 0);
+  if (liveSecs > 0) {
+    const liveMins = Math.floor(liveSecs / 60);
+    if (liveMins > 0) {
+      setFocusLog((prev) => {
+        const next = { ...prev, [today]: (prev[today] ?? 0) + liveMins };
+        saveFocusLog(next);
+        return next;
+      });
+    }
+    localStorage.removeItem(liveKey);
   }
 }
 
@@ -190,26 +215,35 @@ export default function TimerTab({
   const [focusLog, setFocusLog] =
     useState<Record<string, number>>(loadFocusLog);
   const [focusTarget, setFocusTarget] = useState(loadFocusTarget);
-  const [focusTargetInput, setFocusTargetInput] = useState(
-    String(Math.round(loadFocusTarget() / 60)),
+  // focusTargetInput is displayed in HOURS
+  const [focusTargetInput, setFocusTargetInput] = useState(() =>
+    String(loadFocusTarget() / 60),
   );
   const sessionStartRef = useRef<number | null>(null);
   const prevRunning = useRef(running);
+  const liveAccumRef = useRef(0); // seconds accumulated in current live session
+
+  // On mount, merge any stale live focus key from previous session/crash
+  useEffect(() => {
+    mergeLiveFocusOnMount(setFocusLog);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track session start/stop for partial focus time
   useEffect(() => {
-    if (running && !prevRunning.current) {
+    if (running && !prevRunning.current && mode === "work") {
       // Timer started
       sessionStartRef.current = Date.now();
+      liveAccumRef.current = 0;
     } else if (
       !running &&
       prevRunning.current &&
       sessionStartRef.current !== null
     ) {
-      // Timer paused/stopped — save elapsed time
+      // Timer paused/stopped — finalize and save elapsed time
       const elapsed = Math.floor((Date.now() - sessionStartRef.current) / 1000);
-      if (elapsed > 0 && mode === "work") {
-        const elapsedMins = Math.floor(elapsed / 60);
+      const totalElapsed = liveAccumRef.current + elapsed;
+      if (totalElapsed > 0 && mode === "work") {
+        const elapsedMins = Math.floor(totalElapsed / 60);
         if (elapsedMins > 0) {
           const today = getTodayDateStr();
           setFocusLog((prev) => {
@@ -218,12 +252,34 @@ export default function TimerTab({
             return next;
           });
         }
-        onFocusTimeUpdate?.(elapsed);
+        onFocusTimeUpdate?.(totalElapsed);
       }
+      // Clear the live key on finalize
+      const today = getTodayDateStr();
+      localStorage.removeItem(getLiveFocusKey(today));
       sessionStartRef.current = null;
+      liveAccumRef.current = 0;
     }
     prevRunning.current = running;
   }, [running, mode, onFocusTimeUpdate]);
+
+  // Write live accumulation on every tick when running (so crash recovery works)
+  useEffect(() => {
+    if (!running || mode !== "work") return;
+    const today = getTodayDateStr();
+    const liveKey = getLiveFocusKey(today);
+    // Write elapsed seconds since session start to localStorage every second
+    const interval = setInterval(() => {
+      if (sessionStartRef.current !== null) {
+        const elapsed = Math.floor(
+          (Date.now() - sessionStartRef.current) / 1000,
+        );
+        liveAccumRef.current = elapsed;
+        localStorage.setItem(liveKey, String(elapsed));
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [running, mode]);
 
   useEffect(() => {
     if (sessions > prevSessionsRef.current) {
@@ -614,28 +670,30 @@ export default function TimerTab({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {/* Target setting */}
+          {/* Target setting — input is in HOURS */}
           <div className="flex items-center gap-2">
             <Label className="text-xs text-muted-foreground whitespace-nowrap">
-              Daily Target (min):
+              Daily Target (hours):
             </Label>
             <Input
               type="number"
-              min={1}
-              max={1440}
+              min={0.1}
+              max={24}
+              step={0.5}
               value={focusTargetInput}
               onChange={(e) => setFocusTargetInput(e.target.value)}
               onBlur={() => {
-                const v = Number.parseInt(focusTargetInput, 10);
-                if (!Number.isNaN(v) && v > 0) {
-                  setFocusTarget(v);
-                  localStorage.setItem(FOCUS_TARGET_KEY, String(v));
+                const hours = Number.parseFloat(focusTargetInput);
+                if (!Number.isNaN(hours) && hours > 0) {
+                  const mins = Math.round(hours * 60);
+                  setFocusTarget(mins);
+                  localStorage.setItem(FOCUS_TARGET_KEY, String(mins));
                 }
               }}
               className="h-7 text-xs bg-muted/40 border-input w-20 font-mono"
             />
             <span className="text-xs text-muted-foreground">
-              = {Math.floor(focusTarget / 60)}h {focusTarget % 60}m
+              = {(focusTarget / 60).toFixed(1)}h
             </span>
           </div>
 

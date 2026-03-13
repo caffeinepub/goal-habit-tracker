@@ -1,11 +1,29 @@
 import { Toaster } from "@/components/ui/sonner";
 import { useCallback, useEffect, useRef, useState } from "react";
+
+// ── Pomodoro state persistence ──────────────────────────────────────────────
+const POMO_STATE_KEY = "ssc_pomodoro_state";
+interface PomoPersistedState {
+  running: boolean;
+  timeLeft: number;
+  startedAt: number | null;
+  mode: string;
+}
+function loadPomodoroState(): PomoPersistedState | null {
+  try {
+    const s = localStorage.getItem(POMO_STATE_KEY);
+    return s ? JSON.parse(s) : null;
+  } catch {
+    return null;
+  }
+}
 import { toast } from "sonner";
 import type { MockTestScore } from "./backend.d";
 import AddSubjectTab from "./components/AddSubjectTab";
 import AnalyticsTab from "./components/AnalyticsTab";
 import AppearancePanel, {
   THEMES,
+  applyCustomTheme,
   type AppearanceSettings,
 } from "./components/AppearancePanel";
 import DailyRoutineTab from "./components/DailyRoutineTab";
@@ -169,10 +187,43 @@ export default function App() {
     }
   }, [appearance.rainbowText]);
 
+  // Re-apply custom theme on page load if it was previously applied
+  useEffect(() => {
+    const saved = localStorage.getItem("ssc_custom_theme");
+    if (saved) {
+      try {
+        const ct = JSON.parse(saved);
+        const wasApplied = localStorage.getItem("ssc_custom_theme_applied");
+        if (wasApplied === "1") {
+          applyCustomTheme(ct);
+        }
+      } catch {
+        // ignore malformed data
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── Timer state (lifted to App for floating widget) ──────────────────────
-  const [timerMode, setTimerMode] = useState<TimerMode>("work");
-  const [timeLeft, setTimeLeft] = useState(1500);
-  const [timerRunning, setTimerRunning] = useState(false);
+  const [timerMode, setTimerMode] = useState<TimerMode>(() => {
+    const p = loadPomodoroState();
+    return (p?.mode as TimerMode) ?? "work";
+  });
+  const [timeLeft, setTimeLeft] = useState<number>(() => {
+    const p = loadPomodoroState();
+    if (p?.running && p.startedAt !== null) {
+      const elapsed = Math.floor((Date.now() - p.startedAt) / 1000);
+      return Math.max(0, p.timeLeft - elapsed);
+    }
+    return p?.timeLeft ?? 1500;
+  });
+  const [timerRunning, setTimerRunning] = useState<boolean>(() => {
+    const p = loadPomodoroState();
+    if (p?.running && p.startedAt !== null) {
+      const elapsed = Math.floor((Date.now() - p.startedAt) / 1000);
+      return Math.max(0, p.timeLeft - elapsed) > 0;
+    }
+    return false;
+  });
   const [timerSessions, setTimerSessions] = useState(0);
   const [customDefaultSeconds, setCustomDefaultSeconds] = useState<number>(
     () => {
@@ -181,6 +232,14 @@ export default function App() {
     },
   );
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Timestamp-based refs to prevent drift
+  const timerStartedAtRef = useRef<number | null>(null);
+  const timerBaseLeftRef = useRef<number>(timeLeft);
+  // Stable ref to latest timeLeft so interval effect doesn't need it as dep
+  const timeLeftRef = useRef<number>(timeLeft);
+  useEffect(() => {
+    timeLeftRef.current = timeLeft;
+  }, [timeLeft]);
 
   // ─── Section timer sync state ────────────────────────────────────────────
   const [activeSectionTimer, setActiveSectionTimer] = useState<{
@@ -258,7 +317,7 @@ export default function App() {
       ? `Focus Today: ${weakSubjects.map((s) => s.name).join(", ")}`
       : "Balanced Revision Day";
 
-  // ─── Timer interval ────────────────────────────────────────────────────────
+  // ─── Timer interval (timestamp-based, no drift) ────────────────────────────
   const clearTimerInterval = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -266,26 +325,67 @@ export default function App() {
     }
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: timeLeft is read via timeLeftRef to avoid restart loop
   useEffect(() => {
     if (timerRunning) {
+      // Record the start timestamp and base remaining time (from ref to avoid stale closure)
+      timerStartedAtRef.current = Date.now();
+      timerBaseLeftRef.current = timeLeftRef.current;
+
       intervalRef.current = setInterval(() => {
-        setTimeLeft((t) => {
-          if (t <= 1) {
-            clearTimerInterval();
-            setTimerRunning(false);
-            setTimerSessions((s) => s + 1);
-            toast.success(
-              timerMode === "work"
-                ? "Focus session complete! Take a break."
-                : "Break over! Time to focus.",
-            );
-            return 0;
-          }
-          return t - 1;
-        });
-      }, 1000);
+        if (timerStartedAtRef.current === null) return;
+        const elapsed = Math.floor(
+          (Date.now() - timerStartedAtRef.current) / 1000,
+        );
+        const newTimeLeft = Math.max(0, timerBaseLeftRef.current - elapsed);
+        setTimeLeft(newTimeLeft);
+
+        // Persist state on every tick so we can recover after tab sleep
+        localStorage.setItem(
+          POMO_STATE_KEY,
+          JSON.stringify({
+            running: true,
+            timeLeft: timerBaseLeftRef.current,
+            startedAt: timerStartedAtRef.current,
+            mode: timerMode,
+          } satisfies PomoPersistedState),
+        );
+
+        if (newTimeLeft <= 0) {
+          clearTimerInterval();
+          setTimerRunning(false);
+          setTimerSessions((s) => s + 1);
+          toast.success(
+            timerMode === "work"
+              ? "Focus session complete! Take a break."
+              : "Break over! Time to focus.",
+          );
+          localStorage.setItem(
+            POMO_STATE_KEY,
+            JSON.stringify({
+              running: false,
+              timeLeft: 0,
+              startedAt: null,
+              mode: timerMode,
+            } satisfies PomoPersistedState),
+          );
+        }
+      }, 200); // 200ms for responsiveness, wall-clock based — no drift
     } else {
+      // Capture the accurate remaining time on pause
+      timerBaseLeftRef.current = timeLeftRef.current;
+      timerStartedAtRef.current = null;
       clearTimerInterval();
+      // Persist paused state
+      localStorage.setItem(
+        POMO_STATE_KEY,
+        JSON.stringify({
+          running: false,
+          timeLeft: timeLeftRef.current,
+          startedAt: null,
+          mode: timerMode,
+        } satisfies PomoPersistedState),
+      );
     }
     return clearTimerInterval;
   }, [timerRunning, clearTimerInterval, timerMode]);
@@ -313,12 +413,14 @@ export default function App() {
   const handleTimerModeChange = useCallback(
     (newMode: TimerMode) => {
       setTimerRunning(false);
+      timerStartedAtRef.current = null;
       setTimerMode(newMode);
-      if (newMode === "work") {
-        setTimeLeft(customDefaultSeconds);
-      } else {
-        setTimeLeft(TIMER_PRESETS[newMode].defaultSeconds);
-      }
+      const newSecs =
+        newMode === "work"
+          ? customDefaultSeconds
+          : TIMER_PRESETS[newMode].defaultSeconds;
+      setTimeLeft(newSecs);
+      timerBaseLeftRef.current = newSecs;
     },
     [customDefaultSeconds],
   );
@@ -329,11 +431,13 @@ export default function App() {
 
   const handleTimerReset = useCallback(() => {
     setTimerRunning(false);
-    if (timerMode === "work") {
-      setTimeLeft(customDefaultSeconds);
-    } else {
-      setTimeLeft(TIMER_PRESETS[timerMode].defaultSeconds);
-    }
+    timerStartedAtRef.current = null;
+    const newSecs =
+      timerMode === "work"
+        ? customDefaultSeconds
+        : TIMER_PRESETS[timerMode].defaultSeconds;
+    setTimeLeft(newSecs);
+    timerBaseLeftRef.current = newSecs;
   }, [timerMode, customDefaultSeconds]);
 
   const handleSetDefault = useCallback(
@@ -341,6 +445,7 @@ export default function App() {
       setCustomDefaultSeconds(seconds);
       if (timerMode === "work" && !timerRunning) {
         setTimeLeft(seconds);
+        timerBaseLeftRef.current = seconds;
       }
     },
     [timerMode, timerRunning],

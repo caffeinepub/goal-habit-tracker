@@ -412,6 +412,15 @@ export default function QuestionsTab({
   const qTimerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const qElapsedRef = useRef(0);
 
+  // ── Timestamp-based refs for no-drift timer ──────────────────────────────
+  const qStartedAtRef = useRef<number | null>(null);
+  const qBaseSecsRef = useRef<number>(0);
+  const qElapsedStartRef = useRef<number | null>(null);
+  const qElapsedBaseRef = useRef<number>(0);
+  const qLastSectionWrittenRef = useRef<number>(0);
+  // Tracks current remaining secs inside interval (for correct pause save)
+  const qCurrentSecsRef = useRef<number>(0);
+
   // ── Flag to skip reset effect when restoring from storage ────────────────
   const isQRestoringRef = useRef(false);
 
@@ -422,18 +431,21 @@ export default function QuestionsTab({
       // Mark restore in progress so reset effect is skipped
       isQRestoringRef.current = true;
 
-      const elapsed = Math.floor((Date.now() - saved.savedAt) / 1000);
+      const wallElapsed = Math.floor((Date.now() - saved.savedAt) / 1000);
       const restored = saved.running
-        ? Math.max(0, saved.timerSecs - elapsed)
+        ? Math.max(0, saved.timerSecs - wallElapsed)
         : saved.timerSecs;
+      const restoredElapsed = saved.running
+        ? saved.elapsedSecs + wallElapsed
+        : saved.elapsedSecs;
 
       setSubject(saved.subject);
       setCountInput(saved.countInput);
       setQTimerSecs(restored);
       setQTimerInitial(saved.timerInitial);
-      qElapsedRef.current = saved.running
-        ? saved.elapsedSecs + elapsed
-        : saved.elapsedSecs;
+      qBaseSecsRef.current = restored;
+      qElapsedRef.current = restoredElapsed;
+      qElapsedBaseRef.current = restoredElapsed;
 
       if (saved.running && restored > 0) {
         setQTimerRunning(true);
@@ -483,19 +495,28 @@ export default function QuestionsTab({
     }
     setQTimerRunning(false);
     if (qTimerIntervalRef.current) clearInterval(qTimerIntervalRef.current);
+    qStartedAtRef.current = null;
+    qElapsedStartRef.current = null;
+    qElapsedBaseRef.current = 0;
+    qElapsedRef.current = 0;
+    qLastSectionWrittenRef.current = 0;
     const n = Number.parseInt(countInput, 10);
     if (subject && !Number.isNaN(n) && n > 0) {
       const secs = n * perQTimeSecs;
       setQTimerSecs(secs);
       setQTimerInitial(secs);
+      qBaseSecsRef.current = secs;
       saveQTimerState(subject, countInput, secs, secs, false, 0);
     } else {
       setQTimerSecs(0);
       setQTimerInitial(0);
+      qBaseSecsRef.current = 0;
     }
   }, [subject, countInput, perQTimeSecs, saveQTimerState]);
 
   // Keep stable refs for callbacks so the interval doesn't need them in deps
+  const saveQTimerStateRef = useRef(saveQTimerState);
+  saveQTimerStateRef.current = saveQTimerState;
   const subjectRef = useRef(subject);
   subjectRef.current = subject;
   const countInputRef = useRef(countInput);
@@ -507,39 +528,89 @@ export default function QuestionsTab({
   const onSectionTimerUpdateRef = useRef(onSectionTimerUpdate);
   onSectionTimerUpdateRef.current = onSectionTimerUpdate;
 
-  // Countdown tick with persistence and section time tracking
+  // Timestamp-based countdown tick with persistence and section time tracking
   useEffect(() => {
     if (qTimerRunning) {
+      // Only initialize start timestamps if not already running (prevents oscillation on re-render)
+      if (qStartedAtRef.current === null) {
+        qStartedAtRef.current = Date.now();
+      }
+      if (qElapsedStartRef.current === null) {
+        qElapsedStartRef.current = Date.now();
+      }
+
       qTimerIntervalRef.current = setInterval(() => {
-        qElapsedRef.current += 1;
-        addQSectionTimeToday(1);
-        setQTimerSecs((s) => {
-          const next = s <= 1 ? 0 : s - 1;
-          onSectionTimerUpdateRef.current?.(subjectRef.current, next, true);
-          if (s <= 1) {
+        const now = Date.now();
+
+        if (qStartedAtRef.current !== null) {
+          const spElapsed = Math.floor((now - qStartedAtRef.current) / 1000);
+          const newSecs = Math.max(0, qBaseSecsRef.current - spElapsed);
+          qCurrentSecsRef.current = newSecs;
+          setQTimerSecs(newSecs);
+
+          if (qElapsedStartRef.current !== null) {
+            const elapsedDelta = Math.floor(
+              (now - qElapsedStartRef.current) / 1000,
+            );
+            const totalElapsed = qElapsedBaseRef.current + elapsedDelta;
+            qElapsedRef.current = totalElapsed;
+
+            // Section time: only write new seconds
+            const newSectionSecs =
+              totalElapsed - qLastSectionWrittenRef.current;
+            if (newSectionSecs > 0) {
+              addQSectionTimeToday(newSectionSecs);
+              qLastSectionWrittenRef.current = totalElapsed;
+            }
+          }
+
+          onSectionTimerUpdateRef.current?.(subjectRef.current, newSecs, true);
+
+          saveQTimerStateRef.current(
+            subjectRef.current,
+            countInputRef.current,
+            newSecs,
+            qTimerInitialRef.current,
+            newSecs > 0,
+            qElapsedRef.current,
+          );
+
+          if (newSecs <= 0) {
             setQTimerRunning(false);
             toast.success("Question session complete!");
             onSectionTimerPauseRef.current?.();
           }
-          saveQTimerState(
-            subjectRef.current,
-            countInputRef.current,
-            next,
-            qTimerInitialRef.current,
-            s > 1,
-            qElapsedRef.current,
-          );
-          return next;
-        });
-      }, 1000);
+        }
+      }, 200); // 200ms for responsiveness; wall-clock based so no drift
     } else {
       if (qTimerIntervalRef.current) clearInterval(qTimerIntervalRef.current);
-      saveQTimerState(
+
+      // Capture accurate remaining time on pause
+      qStartedAtRef.current = null;
+
+      if (qElapsedStartRef.current !== null) {
+        const elapsedDelta = Math.floor(
+          (Date.now() - qElapsedStartRef.current) / 1000,
+        );
+        const totalElapsed = qElapsedBaseRef.current + elapsedDelta;
+        qElapsedBaseRef.current = totalElapsed;
+        qElapsedRef.current = totalElapsed;
+        qElapsedStartRef.current = null;
+
+        // Finalize section time
+        const newSectionSecs = totalElapsed - qLastSectionWrittenRef.current;
+        if (newSectionSecs > 0) {
+          addQSectionTimeToday(newSectionSecs);
+          qLastSectionWrittenRef.current = totalElapsed;
+        }
+      }
+
+      // Update base to current remaining so that next resume starts from correct point
+      qBaseSecsRef.current = qCurrentSecsRef.current;
+      saveQTimerStateRef.current(
         subjectRef.current,
         countInputRef.current,
-        // Read current secs from ref-captured state via functional updater below
-        // We write state below in a separate effect when paused
-        0, // placeholder — overwritten by the pause-save effect
+        qCurrentSecsRef.current,
         qTimerInitialRef.current,
         false,
         qElapsedRef.current,
@@ -548,28 +619,7 @@ export default function QuestionsTab({
     return () => {
       if (qTimerIntervalRef.current) clearInterval(qTimerIntervalRef.current);
     };
-  }, [qTimerRunning, saveQTimerState]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // When timer is paused, persist the current secs accurately
-  useEffect(() => {
-    if (!qTimerRunning) {
-      saveQTimerState(
-        subject,
-        countInput,
-        qTimerSecs,
-        qTimerInitial,
-        false,
-        qElapsedRef.current,
-      );
-    }
-  }, [
-    qTimerRunning,
-    subject,
-    countInput,
-    qTimerSecs,
-    qTimerInitial,
-    saveQTimerState,
-  ]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [qTimerRunning]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Save section time log to backend on unmount
   useEffect(() => {

@@ -329,12 +329,28 @@ export default function StudyPlanTab({
   const [subjectTimerInitial, setSubjectTimerInitial] = useState(0);
   const subjectTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Actual elapsed time tracking ──────────────────────────────────────────
+  // ── Stable refs for callback props (prevent effect re-runs on parent re-render) ──
+  const onSectionTimerPauseRef = useRef(onSectionTimerPause);
+  onSectionTimerPauseRef.current = onSectionTimerPause;
+  const onSectionTimerUpdateRef = useRef(onSectionTimerUpdate);
+  onSectionTimerUpdateRef.current = onSectionTimerUpdate;
+  const subjectTimerInitialRef = useRef(0);
+
+  // ── Timestamp-based refs to prevent drift ────────────────────────────────
+  const spStartedAtRef = useRef<number | null>(null);
+  const spBaseSecsRef = useRef<number>(0);
+
+  // ── Actual elapsed time tracking (timestamp-based) ──────────────────────
   const [elapsedSecs, setElapsedSecs] = useState(0);
   const [todayTotalElapsedSecs, setTodayTotalElapsedSecs] =
     useState(getSectionTimeToday);
   const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedSecsRef = useRef(0);
+  // Timestamp-based elapsed refs
+  const elapsedStartRef = useRef<number | null>(null);
+  const elapsedBaseRef = useRef<number>(0);
+  // Track last section time written so we only write diffs
+  const lastSectionTimeWrittenRef = useRef<number>(0);
 
   // ── Flag to skip reset effect when restoring from storage ────────────────
   const isRestoringRef = useRef(false);
@@ -346,20 +362,22 @@ export default function StudyPlanTab({
       // Mark that we're doing a restore so the reset effect is skipped
       isRestoringRef.current = true;
 
-      // Compute how much time passed since savedAt
-      const elapsed = Math.floor((Date.now() - saved.savedAt) / 1000);
+      // Compute how much time passed since savedAt (wall-clock based)
+      const wallElapsed = Math.floor((Date.now() - saved.savedAt) / 1000);
       const restored = saved.running
-        ? Math.max(0, saved.timerSecs - elapsed)
+        ? Math.max(0, saved.timerSecs - wallElapsed)
         : saved.timerSecs;
       const restoredElapsed = saved.running
-        ? saved.elapsedSecs + elapsed
+        ? saved.elapsedSecs + wallElapsed
         : saved.elapsedSecs;
 
       setSubject(saved.subject);
       setHoursInput(saved.hoursInput);
       setSubjectTimerSecs(restored);
       setSubjectTimerInitial(saved.timerInitial);
+      spBaseSecsRef.current = restored;
       elapsedSecsRef.current = restoredElapsed;
+      elapsedBaseRef.current = restoredElapsed;
       setElapsedSecs(restoredElapsed);
 
       if (saved.running && restored > 0) {
@@ -373,7 +391,7 @@ export default function StudyPlanTab({
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Save timer state to localStorage on every relevant state change ───────
+  // ── Save timer state to localStorage ─────────────────────────────────────
   const saveTimerStateToLocalStorage = useCallback(
     (
       sub: string,
@@ -412,74 +430,125 @@ export default function StudyPlanTab({
     setSubjectTimerRunning(false);
     if (subjectTimerRef.current) clearInterval(subjectTimerRef.current);
     if (elapsedRef.current) clearInterval(elapsedRef.current);
+    spStartedAtRef.current = null;
+    elapsedStartRef.current = null;
+    elapsedBaseRef.current = 0;
     elapsedSecsRef.current = 0;
     setElapsedSecs(0);
+    lastSectionTimeWrittenRef.current = 0;
     const h = Number.parseFloat(hoursInput);
     if (subject && !Number.isNaN(h) && h > 0) {
       const secs = Math.round(h * 3600);
       setSubjectTimerSecs(secs);
       setSubjectTimerInitial(secs);
+      subjectTimerInitialRef.current = secs;
+      spBaseSecsRef.current = secs;
       saveTimerStateToLocalStorage(subject, hoursInput, secs, secs, false, 0);
     } else {
       setSubjectTimerSecs(0);
       setSubjectTimerInitial(0);
+      spBaseSecsRef.current = 0;
     }
   }, [subject, hoursInput, saveTimerStateToLocalStorage]);
 
-  // Elapsed counter (runs when timer is running) + section time tracking
+  // Combined timestamp-based interval: countdown + elapsed + section time
+  // biome-ignore lint/correctness/useExhaustiveDependencies: callback props intentionally stored in refs to prevent timer restart
   useEffect(() => {
     if (subjectTimerRunning) {
-      elapsedRef.current = setInterval(() => {
-        elapsedSecsRef.current += 1;
-        setElapsedSecs(elapsedSecsRef.current);
-        // Accumulate to section time (every second)
-        addSectionTimeToday(1);
-        // Notify parent
-        onSectionTimerUpdate?.(subject, subjectTimerSecs, true);
-      }, 1000);
-    } else {
-      if (elapsedRef.current) clearInterval(elapsedRef.current);
-      if (elapsedSecsRef.current > 0) {
-        setTodayTotalElapsedSecs((prev) => prev + elapsedSecsRef.current);
-        elapsedSecsRef.current = 0;
-        setElapsedSecs(0);
-      }
-    }
-    return () => {
-      if (elapsedRef.current) clearInterval(elapsedRef.current);
-    };
-  }, [subjectTimerRunning, subject, subjectTimerSecs, onSectionTimerUpdate]);
+      // Record start timestamps
+      spStartedAtRef.current = Date.now();
+      elapsedStartRef.current = Date.now();
 
-  // Countdown tick
-  useEffect(() => {
-    if (subjectTimerRunning) {
       subjectTimerRef.current = setInterval(() => {
-        setSubjectTimerSecs((s) => {
-          const next = s <= 1 ? 0 : s - 1;
-          if (s <= 1) {
-            setSubjectTimerRunning(false);
-            toast.success("Study session complete!");
-            onSectionTimerPause?.();
+        const now = Date.now();
+
+        // ── Countdown (timestamp-based, no drift) ──
+        if (spStartedAtRef.current !== null) {
+          const spElapsed = Math.floor((now - spStartedAtRef.current) / 1000);
+          const newSecs = Math.max(0, spBaseSecsRef.current - spElapsed);
+          setSubjectTimerSecs(newSecs);
+
+          // ── Elapsed counter (timestamp-based) ──
+          if (elapsedStartRef.current !== null) {
+            const elapsedDelta = Math.floor(
+              (now - elapsedStartRef.current) / 1000,
+            );
+            const totalElapsed = elapsedBaseRef.current + elapsedDelta;
+            elapsedSecsRef.current = totalElapsed;
+            setElapsedSecs(totalElapsed);
+
+            // Accumulate section time (only write new seconds)
+            const newSectionSecs =
+              totalElapsed - lastSectionTimeWrittenRef.current;
+            if (newSectionSecs > 0) {
+              addSectionTimeToday(newSectionSecs);
+              lastSectionTimeWrittenRef.current = totalElapsed;
+            }
           }
-          // Save state on every tick
+
+          // Notify parent with current secs
+          onSectionTimerUpdateRef.current?.(
+            subject,
+            Math.max(
+              0,
+              spBaseSecsRef.current -
+                Math.floor((now - spStartedAtRef.current) / 1000),
+            ),
+            true,
+          );
+
+          // Save state periodically
           saveTimerStateToLocalStorage(
             subject,
             hoursInput,
-            next,
+            newSecs,
             subjectTimerInitial,
-            s > 1,
+            newSecs > 0,
             elapsedSecsRef.current,
           );
-          return next;
-        });
-      }, 1000);
+
+          if (newSecs <= 0) {
+            setSubjectTimerRunning(false);
+            toast.success("Study session complete!");
+            onSectionTimerPauseRef.current?.();
+          }
+        }
+      }, 200); // 200ms for responsiveness; elapsed is wall-clock based
     } else {
       if (subjectTimerRef.current) clearInterval(subjectTimerRef.current);
+      if (elapsedRef.current) clearInterval(elapsedRef.current);
+
+      // Capture accurate remaining time on pause
+      spStartedAtRef.current = null;
+
+      if (elapsedStartRef.current !== null) {
+        const elapsedDelta = Math.floor(
+          (Date.now() - elapsedStartRef.current) / 1000,
+        );
+        const totalElapsed = elapsedBaseRef.current + elapsedDelta;
+        elapsedBaseRef.current = totalElapsed;
+        elapsedSecsRef.current = totalElapsed;
+        elapsedStartRef.current = null;
+
+        // Finalize section time
+        const newSectionSecs = totalElapsed - lastSectionTimeWrittenRef.current;
+        if (newSectionSecs > 0) {
+          addSectionTimeToday(newSectionSecs);
+          lastSectionTimeWrittenRef.current = totalElapsed;
+        }
+
+        setTodayTotalElapsedSecs((prev) => prev + totalElapsed);
+        elapsedSecsRef.current = 0;
+        elapsedBaseRef.current = 0;
+        lastSectionTimeWrittenRef.current = 0;
+        setElapsedSecs(0);
+      }
+
       // Save paused state
       saveTimerStateToLocalStorage(
         subject,
         hoursInput,
-        subjectTimerSecs,
+        spBaseSecsRef.current,
         subjectTimerInitial,
         false,
         elapsedSecsRef.current,
@@ -487,16 +556,9 @@ export default function StudyPlanTab({
     }
     return () => {
       if (subjectTimerRef.current) clearInterval(subjectTimerRef.current);
+      if (elapsedRef.current) clearInterval(elapsedRef.current);
     };
-  }, [
-    subjectTimerRunning,
-    subject,
-    hoursInput,
-    subjectTimerInitial,
-    subjectTimerSecs,
-    saveTimerStateToLocalStorage,
-    onSectionTimerPause,
-  ]);
+  }, [subjectTimerRunning, saveTimerStateToLocalStorage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Save section time log to backend on unmount
   const saveSectionTimeLogMutateRef = useRef(saveSectionTimeLog.mutate);
