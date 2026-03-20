@@ -1,3 +1,14 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +43,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
   CalendarDays,
@@ -39,6 +51,7 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  Eraser,
   Flame,
   History,
   Palette,
@@ -266,6 +279,7 @@ export default function StudyPlanTab({
   const setCustomSubjectsMutation = useSetCustomSubjects();
   const savePlanCycleMutation = useSavePlanCycle();
   const saveSectionTimeLog = useSaveSectionTimeLog();
+  const queryClient = useQueryClient();
 
   const DAILY_TARGET_HOURS = targets?.dailyStudyHoursTarget ?? 15;
 
@@ -295,6 +309,7 @@ export default function StudyPlanTab({
     return localStorage.getItem(SP_CYCLE_KEY) ?? getTodayDate();
   });
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const savePlanCycleMutateRef = useRef(savePlanCycleMutation.mutate);
   savePlanCycleMutateRef.current = savePlanCycleMutation.mutate;
 
@@ -362,14 +377,9 @@ export default function StudyPlanTab({
       // Mark that we're doing a restore so the reset effect is skipped
       isRestoringRef.current = true;
 
-      // Compute how much time passed since savedAt (wall-clock based)
-      const wallElapsed = Math.floor((Date.now() - saved.savedAt) / 1000);
-      const restored = saved.running
-        ? Math.max(0, saved.timerSecs - wallElapsed)
-        : saved.timerSecs;
-      const restoredElapsed = saved.running
-        ? saved.elapsedSecs + wallElapsed
-        : saved.elapsedSecs;
+      // Always restore timer as paused -- never add offline/background time
+      const restored = saved.timerSecs;
+      const restoredElapsed = saved.elapsedSecs;
 
       setSubject(saved.subject);
       setHoursInput(saved.hoursInput);
@@ -380,9 +390,8 @@ export default function StudyPlanTab({
       elapsedBaseRef.current = restoredElapsed;
       setElapsedSecs(restoredElapsed);
 
-      if (saved.running && restored > 0) {
-        setSubjectTimerRunning(true);
-      }
+      // Always start paused on restore -- user must manually resume
+      // setSubjectTimerRunning(false); // already false by default
 
       // Clear restore flag after state updates settle
       setTimeout(() => {
@@ -616,7 +625,7 @@ export default function StudyPlanTab({
   const triggerSave = useCallback(
     (subj: string, hrs: string) => {
       const h = Number.parseFloat(hrs);
-      if (!subj || Number.isNaN(h) || h < 0.5 || h > DAILY_TARGET_HOURS + 10)
+      if (!subj || Number.isNaN(h) || h < 0 || h > DAILY_TARGET_HOURS + 10)
         return;
 
       setSaveStatus("saving");
@@ -627,31 +636,33 @@ export default function StudyPlanTab({
         {
           onSuccess: () => {
             setSaveStatus("saved");
+            queryClient.invalidateQueries({ queryKey: ["studySessions"] });
             savedTimerRef.current = setTimeout(
               () => setSaveStatus("idle"),
               3000,
             );
           },
-          onError: () => {
+          onError: (err) => {
             setSaveStatus("idle");
-            toast.error("Failed to save session");
+            const msg = err instanceof Error ? err.message : String(err);
+            if (!msg || msg.includes("actor") || msg.includes("null")) {
+              toast.error(
+                "Session expired. Please refresh the page to log in again.",
+              );
+            } else {
+              toast.error(`Failed to save session: ${msg}. Please try again.`);
+            }
           },
         },
       );
     },
-    [setSession, today, DAILY_TARGET_HOURS],
+    [setSession, today, DAILY_TARGET_HOURS, queryClient],
   );
 
-  const handleSubjectChange = useCallback(
-    (val: string) => {
-      setSubject(val);
-      const h = Number.parseFloat(hoursInput);
-      if (!Number.isNaN(h) && h >= 0.5 && h <= DAILY_TARGET_HOURS + 10) {
-        triggerSave(val, hoursInput);
-      }
-    },
-    [hoursInput, triggerSave, DAILY_TARGET_HOURS],
-  );
+  const handleSubjectChange = useCallback((val: string) => {
+    setSubject(val);
+    // Do NOT auto-save on subject change — user must click "Log Hours" or edit hours
+  }, []);
 
   const handleHoursChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -899,6 +910,62 @@ export default function StudyPlanTab({
               History
             </Button>
             <TargetsPanel />
+            {/* Clear today's data */}
+            <AlertDialog
+              open={showClearConfirm}
+              onOpenChange={setShowClearConfirm}
+            >
+              <AlertDialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10"
+                  title="Clear today's study data"
+                  data-ocid="studyplan.clear.open_modal_button"
+                >
+                  <Eraser size={13} />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent data-ocid="studyplan.clear.dialog">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    Clear today's study sessions?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will remove all study hour logs for today. This cannot
+                    be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-ocid="studyplan.clear.cancel_button">
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => {
+                      const today = new Date().toISOString().split("T")[0];
+                      try {
+                        const raw = localStorage.getItem("ssc_study_sessions");
+                        const all = raw ? JSON.parse(raw) : [];
+                        const filtered = all.filter(
+                          (s: { date: string }) => s.date !== today,
+                        );
+                        localStorage.setItem(
+                          "ssc_study_sessions",
+                          JSON.stringify(filtered),
+                        );
+                        toast.success("Today's study sessions cleared");
+                      } catch {
+                        toast.error("Failed to clear");
+                      }
+                    }}
+                    className="bg-amber-500 hover:bg-amber-600 text-white"
+                    data-ocid="studyplan.clear.confirm_button"
+                  >
+                    Clear
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
         <p className="text-sm text-muted-foreground ml-11">
@@ -1121,9 +1188,21 @@ export default function StudyPlanTab({
                     className="bg-muted/40 border-input focus:border-primary/50 font-mono"
                   />
                   <p className="text-[10px] text-muted-foreground">
-                    Auto-saves when subject and hours are both filled
+                    Debounce auto-saves · or click button below to save
+                    immediately
                   </p>
                 </div>
+
+                <Button
+                  size="sm"
+                  className="w-full gap-2"
+                  onClick={() => triggerSave(subject, hoursInput)}
+                  disabled={!subject || !hoursInput || saveStatus === "saving"}
+                  data-ocid="studyplan.submit_button"
+                >
+                  <CheckCircle2 size={13} />
+                  Log Hours
+                </Button>
 
                 {/* Subject countdown timer */}
                 {showSubjectTimer && (
@@ -1199,6 +1278,9 @@ export default function StudyPlanTab({
               <CardTitle className="font-display text-base font-semibold flex items-center gap-2">
                 <BookOpen size={16} className="text-primary" />
                 Today's Breakdown
+                <span className="ml-auto text-[10px] font-normal text-muted-foreground">
+                  (from backend)
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>

@@ -11,13 +11,324 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Subject } from "../backend.d";
 import { useDeleteSubject, useToggleDay } from "../hooks/useQueries";
 import SectionStylePanel, { useSectionStyle } from "./SectionStylePanel";
 
 const DAYS = 30;
+
+const DEFAULT_SUBJECTS = [
+  "Maths",
+  "English",
+  "Reasoning",
+  "GK",
+  "Current Affairs",
+  "Computer",
+  "Science",
+];
+
+function getTodayKey() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function clamp(v: number, min = 0, max = 100) {
+  return Math.max(min, Math.min(max, v));
+}
+
+interface PerformanceData {
+  studyPct: number;
+  studiedSecs: number;
+  studyTargetHours: number;
+  questionsPct: number;
+  questionsSolved: number;
+  questionsTarget: number;
+  routinePct: number;
+  routineDone: number;
+  routineTotal: number;
+  overallPct: number;
+}
+
+function readPerformanceData(): PerformanceData {
+  const dateKey = getTodayKey();
+
+  // Targets
+  let dailyStudyHoursTarget = 15;
+  let questionsTarget = 300;
+  try {
+    const raw = localStorage.getItem("ssc_targets");
+    if (raw) {
+      const t = JSON.parse(raw);
+      if (typeof t.dailyStudyHoursTarget === "number")
+        dailyStudyHoursTarget = t.dailyStudyHoursTarget;
+      if (typeof t.dailyQuestionsTarget === "number")
+        questionsTarget = t.dailyQuestionsTarget;
+      else if (typeof t.questionsTarget === "number")
+        questionsTarget = t.questionsTarget;
+    }
+  } catch {}
+
+  // Study Plan actual seconds
+  let studiedSecs = 0;
+  try {
+    const v = localStorage.getItem(`ssc_section_time_studyplan_${dateKey}`);
+    if (v) studiedSecs = Number(v) || 0;
+  } catch {}
+  const studyTargetSecs = dailyStudyHoursTarget * 3600;
+  const studyPct = clamp(
+    studyTargetSecs > 0 ? (studiedSecs / studyTargetSecs) * 100 : 0,
+  );
+
+  // Questions solved today
+  let customSubjects: string[] = [];
+  try {
+    const raw = localStorage.getItem("ssc_custom_subjects");
+    if (raw) customSubjects = JSON.parse(raw);
+  } catch {}
+  const allSubjects = [...DEFAULT_SUBJECTS, ...customSubjects];
+  let questionsSolved = 0;
+  for (const subj of allSubjects) {
+    try {
+      const v = localStorage.getItem(`ssc_daily_q_${subj}_${dateKey}`);
+      if (v) questionsSolved += Number(v) || 0;
+    } catch {}
+  }
+  const questionsPct = clamp(
+    questionsTarget > 0 ? (questionsSolved / questionsTarget) * 100 : 0,
+  );
+
+  // Daily Routine
+  let routineTotal = 0;
+  let routineDone = 0;
+  try {
+    const tasksRaw = localStorage.getItem(`ssc_routine_day_${dateKey}`);
+    if (tasksRaw) {
+      const tasks = JSON.parse(tasksRaw);
+      routineTotal = Array.isArray(tasks) ? tasks.length : 0;
+    }
+  } catch {}
+  try {
+    const doneRaw = localStorage.getItem(`ssc_routine_done_${dateKey}`);
+    if (doneRaw) {
+      const done = JSON.parse(doneRaw);
+      routineDone = Array.isArray(done) ? done.length : 0;
+    }
+  } catch {}
+  const routinePct = clamp(
+    routineTotal > 0 ? (routineDone / routineTotal) * 100 : 0,
+  );
+
+  const overallPct = Math.round((studyPct + questionsPct + routinePct) / 3);
+
+  return {
+    studyPct: Math.round(studyPct),
+    studiedSecs,
+    studyTargetHours: dailyStudyHoursTarget,
+    questionsPct: Math.round(questionsPct),
+    questionsSolved,
+    questionsTarget,
+    routinePct: Math.round(routinePct),
+    routineDone,
+    routineTotal,
+    overallPct,
+  };
+}
+
+function CircleProgress({ pct, size = 150 }: { pct: number; size?: number }) {
+  const r = (size - 16) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (pct / 100) * circ;
+  const color = pct >= 80 ? "#22c55e" : pct >= 50 ? "#f59e0b" : "#ef4444";
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      className="-rotate-90"
+      role="img"
+      aria-label="Performance progress ring"
+    >
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={10}
+        className="text-muted"
+      />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth={10}
+        strokeLinecap="round"
+        strokeDasharray={circ}
+        strokeDashoffset={offset}
+        style={{ transition: "stroke-dashoffset 0.6s ease" }}
+      />
+      <text
+        x={size / 2}
+        y={size / 2}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        className="rotate-90"
+        style={{
+          transform: `rotate(90deg) translate(0px, ${-size / 2}px) translate(${size / 2}px, 0px)`,
+          fill: color,
+          fontSize: 28,
+          fontWeight: 700,
+          transformOrigin: `${size / 2}px ${size / 2}px`,
+        }}
+      >
+        {pct}%
+      </text>
+    </svg>
+  );
+}
+
+function OverallPerformanceCard() {
+  const [data, setData] = useState<PerformanceData>(() =>
+    readPerformanceData(),
+  );
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setData(readPerformanceData());
+    }, 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  const fmtTime = (secs: number) => {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+  };
+
+  const ringColor =
+    data.overallPct >= 80
+      ? "text-green-500"
+      : data.overallPct >= 50
+        ? "text-amber-500"
+        : "text-red-500";
+
+  const barColor =
+    data.overallPct >= 80
+      ? "bg-green-500"
+      : data.overallPct >= 50
+        ? "bg-amber-500"
+        : "bg-red-500";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.1 }}
+      className="mb-6"
+    >
+      <Card className="border-border bg-card overflow-hidden">
+        <CardContent className="p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <TrendingUp size={14} className="text-primary" />
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Today's Overall Performance
+            </h3>
+          </div>
+
+          <div className="flex flex-col md:flex-row items-center gap-6">
+            {/* Ring */}
+            <div className="flex flex-col items-center shrink-0">
+              <div className={ringColor}>
+                <CircleProgress pct={data.overallPct} size={150} />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Combined Score
+              </p>
+            </div>
+
+            {/* Breakdown rows */}
+            <div className="flex-1 w-full space-y-4">
+              {/* Study Plan */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium text-foreground">
+                    📚 Study Plan
+                  </span>
+                  <span className="text-xs font-bold text-foreground">
+                    {data.studyPct}%
+                  </span>
+                </div>
+                <Progress value={data.studyPct} className="h-2 bg-muted" />
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {fmtTime(data.studiedSecs)} studied / {data.studyTargetHours}h
+                  target
+                </p>
+              </div>
+
+              {/* Questions */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium text-foreground">
+                    ✏️ Questions
+                  </span>
+                  <span className="text-xs font-bold text-foreground">
+                    {data.questionsPct}%
+                  </span>
+                </div>
+                <Progress value={data.questionsPct} className="h-2 bg-muted" />
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {data.questionsSolved} solved / {data.questionsTarget} target
+                </p>
+              </div>
+
+              {/* Daily Routine */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium text-foreground">
+                    📋 Daily Routine
+                  </span>
+                  <span className="text-xs font-bold text-foreground">
+                    {data.routinePct}%
+                  </span>
+                </div>
+                <Progress value={data.routinePct} className="h-2 bg-muted" />
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {data.routineDone} done / {data.routineTotal} tasks
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Overall bar accent */}
+          <div className="mt-4 pt-4 border-t border-border">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-semibold text-foreground">
+                Overall Average
+              </span>
+              <span className={`text-sm font-bold ${ringColor}`}>
+                {data.overallPct}%
+              </span>
+            </div>
+            <div className="w-full h-2.5 rounded-full bg-muted overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${barColor}`}
+                style={{ width: `${data.overallPct}%` }}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
 
 interface HomeTabProps {
   subjects: Subject[];
@@ -311,6 +622,9 @@ export default function HomeTab({
         predictedScore={predictedScore}
         timetable={timetable}
       />
+
+      {/* Overall Performance Card */}
+      <OverallPerformanceCard />
 
       {/* Subject grid */}
       {isLoading ? (

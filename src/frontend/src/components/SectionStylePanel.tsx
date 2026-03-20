@@ -4,8 +4,7 @@ import { Slider } from "@/components/ui/slider";
 import { ALargeSmall, Palette, RotateCcw, Type, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-// ─── Font options ─────────────────────────────────────────────────────────────
-
+// ─── Font options ───────────────────────────────────────────────────────────────────────────────────
 const FONT_OPTIONS = [
   { value: "Satoshi", label: "Satoshi" },
   { value: "Cabinet Grotesk", label: "Cabinet Grotesk" },
@@ -54,8 +53,7 @@ const ACCENT_COLOR_PRESETS = [
   { label: "Rose", color: "#f43f5e" },
 ];
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
+// ─── Types ────────────────────────────────────────────────────────────────────────────────────────────
 export interface SectionStyle {
   fontFamily: string;
   fontSize: number; // 0 = inherit from global
@@ -69,6 +67,8 @@ const DEFAULT_SECTION_STYLE: SectionStyle = {
   textColor: "",
   accentColor: "",
 };
+
+const SECTION_STYLE_EVENT = "ssc-section-style-change";
 
 function getStorageKey(sectionId: string): string {
   return `ssc_section_style_${sectionId}`;
@@ -87,10 +87,13 @@ function loadSectionStyle(sectionId: string): SectionStyle {
 
 function saveSectionStyle(sectionId: string, style: SectionStyle) {
   localStorage.setItem(getStorageKey(sectionId), JSON.stringify(style));
+  // Dispatch custom event so same-tab listeners update without polling
+  window.dispatchEvent(
+    new CustomEvent(SECTION_STYLE_EVENT, { detail: { sectionId } }),
+  );
 }
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
-
+// ─── Hook ───────────────────────────────────────────────────────────────────────────────────────────────
 export function useSectionStyle(sectionId: string): {
   style: React.CSSProperties;
   sectionStyle: SectionStyle;
@@ -104,21 +107,25 @@ export function useSectionStyle(sectionId: string): {
     setSectionStyle(loadSectionStyle(sectionId));
   };
 
-  // Listen for storage changes (when panel saves)
+  // Listen for style changes via custom event (same-tab) and storage event (cross-tab)
+  // No polling needed – this eliminates the 500ms re-render cycle
   useEffect(() => {
+    function handleCustom(e: Event) {
+      const detail = (e as CustomEvent<{ sectionId: string }>).detail;
+      if (detail?.sectionId === sectionId) {
+        setSectionStyle(loadSectionStyle(sectionId));
+      }
+    }
     function handleStorage(e: StorageEvent) {
       if (e.key === getStorageKey(sectionId)) {
         setSectionStyle(loadSectionStyle(sectionId));
       }
     }
+    window.addEventListener(SECTION_STYLE_EVENT, handleCustom);
     window.addEventListener("storage", handleStorage);
-    // Also poll (for same-tab changes since storage event doesn't fire in same tab)
-    const interval = setInterval(() => {
-      setSectionStyle(loadSectionStyle(sectionId));
-    }, 500);
     return () => {
+      window.removeEventListener(SECTION_STYLE_EVENT, handleCustom);
       window.removeEventListener("storage", handleStorage);
-      clearInterval(interval);
     };
   }, [sectionId]);
 
@@ -130,8 +137,7 @@ export function useSectionStyle(sectionId: string): {
   return { style, sectionStyle, refreshStyle };
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
+// ─── Component ───────────────────────────────────────────────────────────────────────────────────────────────
 interface SectionStylePanelProps {
   sectionId: string;
   sectionLabel: string;
@@ -272,7 +278,7 @@ export default function SectionStylePanel({
         </div>
 
         <div className="p-3 space-y-4 max-h-[75vh] overflow-y-auto">
-          {/* ── Font Family ──────────────────────────────────────────────────── */}
+          {/* ── Font Family ───────────────────────────────────────────────────────────────────── */}
           <div className="space-y-1.5">
             <Label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide flex items-center gap-1.5">
               <Type size={11} />
@@ -309,7 +315,7 @@ export default function SectionStylePanel({
             )}
           </div>
 
-          {/* ── Font Size ──────────────────────────────────────────────────── */}
+          {/* ── Font Size ───────────────────────────────────────────────────────────────────── */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <Label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide flex items-center gap-1.5">
@@ -366,7 +372,7 @@ export default function SectionStylePanel({
             </div>
           </div>
 
-          {/* ── Text Color ──────────────────────────────────────────────────── */}
+          {/* ── Text Color ───────────────────────────────────────────────────────────────────── */}
           <div className="space-y-1.5">
             <Label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">
               Text Color
@@ -411,7 +417,7 @@ export default function SectionStylePanel({
             </div>
           </div>
 
-          {/* ── Accent Color ──────────────────────────────────────────────── */}
+          {/* ── Accent Color ─────────────────────────────────────────────────────────────────── */}
           <div className="space-y-1.5">
             <Label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">
               Section Accent Color

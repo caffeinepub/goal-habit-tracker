@@ -7,6 +7,7 @@ import {
   BookOpen,
   CalendarDays,
   Clock,
+  DatabaseBackup,
   Download,
   FolderOpen,
   GraduationCap,
@@ -25,6 +26,7 @@ import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import type { TabId } from "../App";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
+import DataManagementPanel from "./DataManagementPanel";
 import DataPortal from "./DataPortal";
 
 interface SidebarProps {
@@ -122,6 +124,7 @@ export default function Sidebar({
   const installPromptRef = useRef<any>(null);
   const [canInstall, setCanInstall] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [dataManagementOpen, setDataManagementOpen] = useState(false);
 
   useEffect(() => {
     if (window.matchMedia("(display-mode: standalone)").matches) {
@@ -275,6 +278,16 @@ export default function Sidebar({
             )}
           </Button>
           <DataPortal />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setDataManagementOpen(true)}
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-primary hover:bg-primary/10"
+            title="Manage Data"
+            data-ocid="sidebar.data_management.button"
+          >
+            <DatabaseBackup size={12} />
+          </Button>
           {canInstall && !isInstalled && (
             <Button
               variant="ghost"
@@ -299,6 +312,10 @@ export default function Sidebar({
           </Button>
         </div>
       </div>
+      <DataManagementPanel
+        open={dataManagementOpen}
+        onClose={() => setDataManagementOpen(false)}
+      />
     </aside>
   );
 }

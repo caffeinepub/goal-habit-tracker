@@ -1,5 +1,12 @@
 import { Toaster } from "@/components/ui/sonner";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 // ── Pomodoro state persistence ──────────────────────────────────────────────
 const POMO_STATE_KEY = "ssc_pomodoro_state";
@@ -19,27 +26,38 @@ function loadPomodoroState(): PomoPersistedState | null {
 }
 import { toast } from "sonner";
 import type { MockTestScore } from "./backend.d";
-import AddSubjectTab from "./components/AddSubjectTab";
-import AnalyticsTab from "./components/AnalyticsTab";
-import AppearancePanel, {
+
+// ── Lazy-loaded tab components (code-split per tab) ────────────────────────
+const AddSubjectTab = lazy(() => import("./components/AddSubjectTab"));
+const AnalyticsTab = lazy(() => import("./components/AnalyticsTab"));
+const AppearancePanel = lazy(() =>
+  import("./components/AppearancePanel").then((m) => ({ default: m.default })),
+);
+const DailyRoutineTab = lazy(() => import("./components/DailyRoutineTab"));
+const ExamTab = lazy(() => import("./components/ExamTab"));
+const FilesTab = lazy(() => import("./components/FilesTab"));
+const FloatingTimerWidget = lazy(
+  () => import("./components/FloatingTimerWidget"),
+);
+const HomeTab = lazy(() => import("./components/HomeTab"));
+const NotebookTab = lazy(() => import("./components/NotebookTab"));
+const NotepadTab = lazy(() => import("./components/NotepadTab"));
+const NotificationsPanel = lazy(
+  () => import("./components/NotificationsPanel"),
+);
+const QuestionsTab = lazy(() => import("./components/QuestionsTab"));
+const StudyPlanTab = lazy(() => import("./components/StudyPlanTab"));
+const TableMakerTab = lazy(() => import("./components/TableMakerTab"));
+const TimerTab = lazy(() => import("./components/TimerTab"));
+
+import {
+  type AppearanceSettings,
   THEMES,
   applyCustomTheme,
-  type AppearanceSettings,
 } from "./components/AppearancePanel";
-import DailyRoutineTab from "./components/DailyRoutineTab";
-import ExamTab from "./components/ExamTab";
-import FilesTab from "./components/FilesTab";
-import FloatingTimerWidget from "./components/FloatingTimerWidget";
-import HomeTab from "./components/HomeTab";
+// ── Eagerly-loaded (small, always visible) ─────────────────────────────────
 import LoginGate from "./components/LoginGate";
-import NotebookTab from "./components/NotebookTab";
-import NotepadTab from "./components/NotepadTab";
-import NotificationsPanel from "./components/NotificationsPanel";
-import QuestionsTab from "./components/QuestionsTab";
 import Sidebar from "./components/Sidebar";
-import StudyPlanTab from "./components/StudyPlanTab";
-import TableMakerTab from "./components/TableMakerTab";
-import TimerTab from "./components/TimerTab";
 import { useInternetIdentity } from "./hooks/useInternetIdentity";
 import { useGetMockScores, useGetSubjects } from "./hooks/useQueries";
 
@@ -103,6 +121,58 @@ function loadAppearance(): AppearanceSettings {
     timeFormat: "12h" as const,
     rainbowText: false,
   };
+}
+
+// ── Tab loading fallback ───────────────────────────────────────────────────
+function TabLoader() {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="flex flex-col items-center gap-3">
+        <span className="h-7 w-7 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      </div>
+    </div>
+  );
+}
+
+// ── Tab error boundary ─────────────────────────────────────────────────────
+import { Component, type ReactNode } from "react";
+class TabErrorBoundary extends Component<
+  { children: ReactNode; tabName: string },
+  { hasError: boolean; error: string }
+> {
+  constructor(props: { children: ReactNode; tabName: string }) {
+    super(props);
+    this.state = { hasError: false, error: "" };
+  }
+  static getDerivedStateFromError(err: Error) {
+    return { hasError: true, error: err?.message ?? "Unknown error" };
+  }
+  override render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-8 max-w-md mx-auto mt-16 text-center">
+          <div className="w-12 h-12 rounded-xl bg-destructive/15 flex items-center justify-center mx-auto mb-4">
+            <span className="text-destructive text-2xl">!</span>
+          </div>
+          <h3 className="font-semibold text-foreground mb-2">
+            {this.props.tabName} failed to load
+          </h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            {this.state.error}
+          </p>
+          <button
+            type="button"
+            className="text-xs text-primary underline"
+            onClick={() => this.setState({ hasError: false, error: "" })}
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 export default function App() {
@@ -325,7 +395,7 @@ export default function App() {
     }
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: timeLeft is read via timeLeftRef to avoid restart loop
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional -- timeLeft read via ref
   useEffect(() => {
     if (timerRunning) {
       // Record the start timestamp and base remaining time (from ref to avoid stale closure)
@@ -486,90 +556,136 @@ export default function App() {
 
       {/* Appearance Panel */}
       {appearancePanelOpen && (
-        <AppearancePanel
-          settings={appearance}
-          onChange={handleAppearanceChange}
-          onClose={() => setAppearancePanelOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <AppearancePanel
+            settings={appearance}
+            onChange={handleAppearanceChange}
+            onClose={() => setAppearancePanelOpen(false)}
+          />
+        </Suspense>
       )}
 
       {/* Notifications Panel */}
       {notificationsPanelOpen && (
-        <NotificationsPanel onClose={() => setNotificationsPanelOpen(false)} />
+        <Suspense fallback={null}>
+          <NotificationsPanel
+            onClose={() => setNotificationsPanelOpen(false)}
+          />
+        </Suspense>
       )}
 
       <main className="flex-1 overflow-y-auto min-h-screen">
-        {activeTab === "home" && (
-          <HomeTab
-            subjects={subjects}
-            search={search}
-            isLoading={subjectsLoading}
-            overallCompletion={overallCompletion}
-            predictedScore={predictedScore}
-            timetable={timetable}
-          />
-        )}
-        {activeTab === "add" && <AddSubjectTab />}
-        {activeTab === "analytics" && (
-          <AnalyticsTab
-            mockScores={mockScores.map((s) => s.score)}
-            isLoading={scoresLoading}
-            overallCompletion={overallCompletion}
-            predictedScore={predictedScore}
-          />
-        )}
-        {activeTab === "timer" && (
-          <TimerTab
-            mode={timerMode}
-            timeLeft={timeLeft}
-            running={timerRunning}
-            sessions={timerSessions}
-            customDefaultSeconds={customDefaultSeconds}
-            tipIndex={tipIndex}
-            onModeChange={handleTimerModeChange}
-            onToggleRunning={handleTimerToggle}
-            onReset={handleTimerReset}
-            onSetDefault={handleSetDefault}
-          />
-        )}
-        {activeTab === "studyplan" && (
-          <StudyPlanTab
-            onSectionTimerStart={handleSectionTimerStart}
-            onSectionTimerPause={handleSectionTimerPause}
-            onSectionTimerUpdate={handleSectionTimerUpdate}
-            onSyncPomodoro={handleSyncPomodoro}
-          />
-        )}
-        {activeTab === "questions" && (
-          <QuestionsTab
-            onSectionTimerStart={handleSectionTimerStart}
-            onSectionTimerPause={handleSectionTimerPause}
-            onSectionTimerUpdate={handleSectionTimerUpdate}
-            onSyncPomodoro={handleSyncPomodoro}
-          />
-        )}
-        {activeTab === "exam" && <ExamTab />}
-        {activeTab === "notebook" && <NotebookTab />}
-        {activeTab === "notepad" && <NotepadTab />}
-        {activeTab === "dailyroutine" && (
-          <DailyRoutineTab timeFormat={appearance.timeFormat ?? "12h"} />
-        )}
-        {activeTab === "tablemaker" && <TableMakerTab />}
-        {activeTab === "files" && <FilesTab />}
+        <Suspense fallback={<TabLoader />}>
+          {activeTab === "home" && (
+            <TabErrorBoundary tabName="Home">
+              <HomeTab
+                subjects={subjects}
+                search={search}
+                isLoading={subjectsLoading}
+                overallCompletion={overallCompletion}
+                predictedScore={predictedScore}
+                timetable={timetable}
+              />
+            </TabErrorBoundary>
+          )}
+          {activeTab === "add" && (
+            <TabErrorBoundary tabName="Add Subject">
+              <AddSubjectTab />
+            </TabErrorBoundary>
+          )}
+          {activeTab === "analytics" && (
+            <TabErrorBoundary tabName="Analytics">
+              <AnalyticsTab
+                mockScores={mockScores.map((s) => s.score)}
+                isLoading={scoresLoading}
+                overallCompletion={overallCompletion}
+                predictedScore={predictedScore}
+              />
+            </TabErrorBoundary>
+          )}
+          {activeTab === "timer" && (
+            <TabErrorBoundary tabName="Pomodoro">
+              <TimerTab
+                mode={timerMode}
+                timeLeft={timeLeft}
+                running={timerRunning}
+                sessions={timerSessions}
+                customDefaultSeconds={customDefaultSeconds}
+                tipIndex={tipIndex}
+                onModeChange={handleTimerModeChange}
+                onToggleRunning={handleTimerToggle}
+                onReset={handleTimerReset}
+                onSetDefault={handleSetDefault}
+              />
+            </TabErrorBoundary>
+          )}
+          {activeTab === "studyplan" && (
+            <TabErrorBoundary tabName="Study Plan">
+              <StudyPlanTab
+                onSectionTimerStart={handleSectionTimerStart}
+                onSectionTimerPause={handleSectionTimerPause}
+                onSectionTimerUpdate={handleSectionTimerUpdate}
+                onSyncPomodoro={handleSyncPomodoro}
+              />
+            </TabErrorBoundary>
+          )}
+          {activeTab === "questions" && (
+            <TabErrorBoundary tabName="Questions">
+              <QuestionsTab
+                onSectionTimerStart={handleSectionTimerStart}
+                onSectionTimerPause={handleSectionTimerPause}
+                onSectionTimerUpdate={handleSectionTimerUpdate}
+                onSyncPomodoro={handleSyncPomodoro}
+              />
+            </TabErrorBoundary>
+          )}
+          {activeTab === "exam" && (
+            <TabErrorBoundary tabName="Exam Mode">
+              <ExamTab />
+            </TabErrorBoundary>
+          )}
+          {activeTab === "notebook" && (
+            <TabErrorBoundary tabName="Notebook">
+              <NotebookTab />
+            </TabErrorBoundary>
+          )}
+          {activeTab === "notepad" && (
+            <TabErrorBoundary tabName="Notepad">
+              <NotepadTab />
+            </TabErrorBoundary>
+          )}
+          {activeTab === "dailyroutine" && (
+            <TabErrorBoundary tabName="Daily Routine">
+              <DailyRoutineTab timeFormat={appearance.timeFormat ?? "12h"} />
+            </TabErrorBoundary>
+          )}
+          {activeTab === "tablemaker" && (
+            <TabErrorBoundary tabName="Table Maker">
+              <TableMakerTab />
+            </TabErrorBoundary>
+          )}
+          {activeTab === "files" && (
+            <TabErrorBoundary tabName="Files">
+              <FilesTab />
+            </TabErrorBoundary>
+          )}
+        </Suspense>
       </main>
 
       {/* Floating Timer Widget */}
-      <FloatingTimerWidget
-        mode={timerMode}
-        timeLeft={timeLeft}
-        running={timerRunning}
-        activeTab={activeTab}
-        onToggleRunning={handleTimerToggle}
-        onGoToTimer={() => setActiveTab("timer")}
-        sectionTimerLabel={activeSectionTimer?.label}
-        sectionTimerSecs={activeSectionTimer?.secs}
-        sectionTimerRunning={activeSectionTimer?.running}
-      />
+      <Suspense fallback={null}>
+        <FloatingTimerWidget
+          mode={timerMode}
+          timeLeft={timeLeft}
+          running={timerRunning}
+          activeTab={activeTab}
+          onToggleRunning={handleTimerToggle}
+          onGoToTimer={() => setActiveTab("timer")}
+          sectionTimerLabel={activeSectionTimer?.label}
+          sectionTimerSecs={activeSectionTimer?.secs}
+          sectionTimerRunning={activeSectionTimer?.running}
+        />
+      </Suspense>
 
       <Toaster
         theme="dark"

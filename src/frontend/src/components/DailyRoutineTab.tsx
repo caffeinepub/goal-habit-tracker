@@ -1,3 +1,14 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +50,7 @@ import {
   Circle,
   Clock,
   Copy,
+  Eraser,
   Flame,
   Lock,
   Palette,
@@ -390,9 +402,15 @@ export default function DailyRoutineTab({
   // ── Copy from date dialog ─────────────────────────────────────────────────
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const [copyFromDate, setCopyFromDate] = useState("");
+  const [copyPreviewRows, setCopyPreviewRows] = useState<RoutineRow[]>([]);
+
+  // ── Auto-copy prompt (shown when today has no tasks but yesterday has some) ─
+  const [autoCopyPromptOpen, setAutoCopyPromptOpen] = useState(false);
+  const yesterdayRowsRef = useRef<RoutineRow[]>([]);
 
   // ── Progress chart dialog ─────────────────────────────────────────────────
   const [progressChartOpen, setProgressChartOpen] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [chartDateKey, setChartDateKey] = useState<string>(todayKey());
   const [showStylePanel, setShowStylePanel] = useState(false);
   const styleBtnRef = useRef<HTMLButtonElement>(null);
@@ -428,18 +446,39 @@ export default function DailyRoutineTab({
   }, []);
 
   // ── Load data when selected day changes ──────────────────────────────────
+  // Track whether rows have been initialized for current selectedKey to prevent
+  // race condition where save effect fires before load effect initializes data
+  const rowsLoadedForKey = useRef<string | null>(null);
   useEffect(() => {
-    setRows(loadRowsForDay(selectedKey));
+    rowsLoadedForKey.current = null; // Mark as not yet loaded for new key
+    const loaded = loadRowsForDay(selectedKey);
+    const today = todayKey();
+    if (selectedKey === today && loaded.length === 0) {
+      // Show prompt to copy yesterday's tasks if today has none
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      const yKey = d.toISOString().split("T")[0];
+      const yesterdayRows = loadRowsForDay(yKey);
+      if (yesterdayRows.length > 0) {
+        yesterdayRowsRef.current = yesterdayRows;
+        setAutoCopyPromptOpen(true);
+      }
+    }
+    setRows(loaded);
     setDoneIds(loadDoneForDay(selectedKey));
+    rowsLoadedForKey.current = selectedKey; // Mark as loaded
   }, [selectedKey]);
 
   // ── Persist rows on change ───────────────────────────────────────────────
   useEffect(() => {
+    // Only save if rows have been initialized for the current key (prevent overwrite on key change)
+    if (rowsLoadedForKey.current !== selectedKey) return;
     saveRowsForDay(selectedKey, rows);
   }, [rows, selectedKey]);
 
   // ── Persist done set on change ───────────────────────────────────────────
   useEffect(() => {
+    if (rowsLoadedForKey.current !== selectedKey) return;
     saveDoneForDay(selectedKey, doneIds);
   }, [doneIds, selectedKey]);
 
@@ -577,6 +616,7 @@ export default function DailyRoutineTab({
     setForm(emptyForm());
     setSubjectSelect("");
     setCustomSubject("");
+    toast.success(editingId !== null ? "Task updated ✓" : "Task added ✓");
   }, [form, editingId, subjectSelect, customSubject]);
 
   // ── Copy from any date ────────────────────────────────────────────────────
@@ -596,9 +636,29 @@ export default function DailyRoutineTab({
     }));
     setRows(copiedRows);
     setDoneIds(new Set());
+    rowsLoadedForKey.current = selectedKey;
     setCopyDialogOpen(false);
+    setCopyFromDate("");
+    setCopyPreviewRows([]);
     toast.success(`Schedule copied from ${copyFromDate}!`);
-  }, [copyFromDate]);
+  }, [copyFromDate, selectedKey]);
+
+  const handleAutoCopyConfirm = useCallback(() => {
+    const copied = yesterdayRowsRef.current.map((r) => ({
+      ...r,
+      id: Date.now() + Math.random(),
+    }));
+    setRows(copied);
+    setDoneIds(new Set());
+    rowsLoadedForKey.current = selectedKey;
+    setAutoCopyPromptOpen(false);
+    toast.success("Yesterday's schedule copied for today ✓");
+  }, [selectedKey]);
+
+  const handleAutoCopyDecline = useCallback(() => {
+    setAutoCopyPromptOpen(false);
+    rowsLoadedForKey.current = selectedKey;
+  }, [selectedKey]);
 
   const handleDelete = useCallback(
     (id: number) => {
@@ -609,6 +669,7 @@ export default function DailyRoutineTab({
         next.delete(id);
         return next;
       });
+      toast.success("Task removed ✓");
     },
     [canEdit],
   );
@@ -898,6 +959,50 @@ export default function DailyRoutineTab({
             >
               <PieChart size={15} />
             </button>
+            {/* Clear today's routine */}
+            <AlertDialog
+              open={showClearConfirm}
+              onOpenChange={setShowClearConfirm}
+            >
+              <AlertDialogTrigger asChild>
+                <button
+                  type="button"
+                  className="w-8 h-8 rounded-lg border border-border text-muted-foreground hover:text-amber-500 hover:border-amber-500/50 flex items-center justify-center transition-colors"
+                  title="Clear today's routine status"
+                  data-ocid="routine.clear.open_modal_button"
+                >
+                  <Eraser size={14} />
+                </button>
+              </AlertDialogTrigger>
+              <AlertDialogContent data-ocid="routine.clear.dialog">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    Clear today's routine status?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will reset all task checkboxes for today. Your tasks
+                    will remain but all completion marks will be cleared.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-ocid="routine.clear.cancel_button">
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => {
+                      const today = new Date().toISOString().split("T")[0];
+                      localStorage.removeItem(`ssc_routine_done_${today}`);
+                      toast.success("Today's routine status cleared");
+                      setDoneIds(new Set());
+                    }}
+                    className="bg-amber-500 hover:bg-amber-600 text-white"
+                    data-ocid="routine.clear.confirm_button"
+                  >
+                    Clear
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             {streak > 0 && (
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20">
                 <Flame size={13} className="text-amber-400" />
@@ -1609,8 +1714,17 @@ export default function DailyRoutineTab({
         </Dialog>
 
         {/* ── Copy From Date Dialog ─────────────────────────────────────────── */}
-        <Dialog open={copyDialogOpen} onOpenChange={setCopyDialogOpen}>
-          <DialogContent className="sm:max-w-sm bg-card border-border">
+        <Dialog
+          open={copyDialogOpen}
+          onOpenChange={(open) => {
+            setCopyDialogOpen(open);
+            if (!open) {
+              setCopyFromDate("");
+              setCopyPreviewRows([]);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md bg-card border-border">
             <DialogHeader>
               <DialogTitle className="font-display text-foreground">
                 Copy Schedule From Date
@@ -1618,8 +1732,8 @@ export default function DailyRoutineTab({
             </DialogHeader>
             <div className="space-y-3 py-2">
               <p className="text-xs text-muted-foreground">
-                Select a date to copy its tasks to {selectedDateLabel}. Existing
-                tasks will be replaced.
+                Select a past date to preview its tasks, then copy them to{" "}
+                {selectedDateLabel}. Existing tasks will be replaced.
               </p>
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">
@@ -1628,17 +1742,74 @@ export default function DailyRoutineTab({
                 <Input
                   type="date"
                   value={copyFromDate}
-                  max={new Date().toISOString().split("T")[0]}
-                  onChange={(e) => setCopyFromDate(e.target.value)}
+                  max={(() => {
+                    const y = new Date();
+                    y.setDate(y.getDate() - 1);
+                    return y.toISOString().split("T")[0];
+                  })()}
+                  onChange={(e) => {
+                    setCopyFromDate(e.target.value);
+                    if (e.target.value) {
+                      setCopyPreviewRows(loadRowsForDay(e.target.value));
+                    } else {
+                      setCopyPreviewRows([]);
+                    }
+                  }}
                   className="h-9 text-sm bg-input border-border"
                 />
               </div>
+              {copyPreviewRows.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">
+                    Preview — {copyPreviewRows.length} task
+                    {copyPreviewRows.length !== 1 ? "s" : ""} found
+                  </Label>
+                  <ScrollArea className="h-40 rounded-md border border-border bg-background/50">
+                    <div className="p-2 space-y-1">
+                      {copyPreviewRows.map((r) => (
+                        <div
+                          key={r.id}
+                          className="flex items-center gap-2 text-xs px-2 py-1.5 rounded bg-muted/50"
+                        >
+                          <Clock
+                            size={11}
+                            className="text-muted-foreground shrink-0"
+                          />
+                          <span className="text-muted-foreground shrink-0">
+                            {r.startTime}–{r.endTime}
+                          </span>
+                          <span className="font-medium text-foreground truncate">
+                            {r.activity}
+                          </span>
+                          {r.subject && (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] h-4 px-1 shrink-0"
+                            >
+                              {r.subject}
+                            </Badge>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
+              {copyFromDate && copyPreviewRows.length === 0 && (
+                <p className="text-xs text-muted-foreground italic">
+                  No tasks found for this date.
+                </p>
+              )}
             </div>
             <DialogFooter className="gap-2">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setCopyDialogOpen(false)}
+                onClick={() => {
+                  setCopyDialogOpen(false);
+                  setCopyFromDate("");
+                  setCopyPreviewRows([]);
+                }}
                 className="text-muted-foreground"
               >
                 Cancel
@@ -1646,11 +1817,83 @@ export default function DailyRoutineTab({
               <Button
                 size="sm"
                 onClick={handleCopyFromDate}
-                disabled={!copyFromDate}
+                disabled={!copyFromDate || copyPreviewRows.length === 0}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
               >
                 <Copy size={13} />
-                Copy Schedule
+                Copy{" "}
+                {copyPreviewRows.length > 0
+                  ? `${copyPreviewRows.length} Task${copyPreviewRows.length !== 1 ? "s" : ""}`
+                  : "Schedule"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── Auto-Copy Yesterday Prompt ────────────────────────────────────── */}
+        <Dialog open={autoCopyPromptOpen} onOpenChange={setAutoCopyPromptOpen}>
+          <DialogContent className="sm:max-w-sm bg-card border-border">
+            <DialogHeader>
+              <DialogTitle className="font-display text-foreground flex items-center gap-2">
+                <Copy size={16} className="text-primary" />
+                Copy Yesterday&apos;s Schedule?
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-1">
+              <p className="text-sm text-muted-foreground">
+                Today has no tasks yet. Copy yesterday&apos;s{" "}
+                {yesterdayRowsRef.current.length} task
+                {yesterdayRowsRef.current.length !== 1 ? "s" : ""} to today?
+                Checkmarks will be reset.
+              </p>
+              <ScrollArea className="h-32 rounded-md border border-border bg-background/50">
+                <div className="p-2 space-y-1">
+                  {yesterdayRowsRef.current.map((r) => (
+                    <div
+                      key={r.id}
+                      className="flex items-center gap-2 text-xs px-2 py-1.5 rounded bg-muted/50"
+                    >
+                      <Clock
+                        size={11}
+                        className="text-muted-foreground shrink-0"
+                      />
+                      <span className="text-muted-foreground shrink-0">
+                        {r.startTime}–{r.endTime}
+                      </span>
+                      <span className="font-medium text-foreground truncate">
+                        {r.activity}
+                      </span>
+                      {r.subject && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] h-4 px-1 shrink-0"
+                        >
+                          {r.subject}
+                        </Badge>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleAutoCopyDecline}
+                className="text-muted-foreground"
+                data-ocid="routine.cancel_button"
+              >
+                No, start fresh
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleAutoCopyConfirm}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2"
+                data-ocid="routine.confirm_button"
+              >
+                <Copy size={13} />
+                Yes, copy tasks
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -1,3 +1,14 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +43,7 @@ import {
   BookOpen,
   CheckCircle2,
   Clock,
+  Eraser,
   Flame,
   History,
   Palette,
@@ -304,6 +316,7 @@ export default function QuestionsTab({
     return localStorage.getItem(Q_CYCLE_KEY) ?? today;
   });
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const savePlanCycleMutateRef = useRef(savePlanCycleMutation.mutate);
   savePlanCycleMutateRef.current = savePlanCycleMutation.mutate;
   const saveSectionTimeLogMutateRef = useRef(saveSectionTimeLog.mutate);
@@ -338,8 +351,15 @@ export default function QuestionsTab({
   const TOTAL_GOAL = Number(targets?.totalQuestionsGoal ?? 9000);
 
   // Build subject targets list dynamically from backend targets
+  // Use a stable primitive key + ref to prevent rebuilding when React Query returns new array references with same data
+  const subjectTargetsRef = useRef(targets?.subjectTargets);
+  subjectTargetsRef.current = targets?.subjectTargets;
+  const subjectTargetsKey = (targets?.subjectTargets ?? [])
+    .map((s) => `${s.name}:${s.target}`)
+    .join(",");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional -- subjectTargetsKey used to stabilize; subjectTargets accessed via ref
   const SUBJECT_TARGETS = useMemo(() => {
-    const subjectTargets = targets?.subjectTargets ?? [];
+    const subjectTargets = subjectTargetsRef.current ?? [];
     return subjectTargets.map((s) => ({
       name: s.name,
       target: Number(s.target),
@@ -349,7 +369,7 @@ export default function QuestionsTab({
         icon: <Target size={14} />,
       }),
     }));
-  }, [targets?.subjectTargets]);
+  }, [subjectTargetsKey]);
 
   // Merged subject list: standard + custom (no duplicates)
   const defaultSubjectNames = useMemo(
@@ -679,9 +699,18 @@ export default function QuestionsTab({
               3000,
             );
           },
-          onError: () => {
+          onError: (err) => {
             setSaveStatus("idle");
-            toast.error("Failed to save questions");
+            const msg = err instanceof Error ? err.message : String(err);
+            if (!msg || msg.includes("actor") || msg.includes("null")) {
+              toast.error(
+                "Session expired. Please refresh the page to log in again.",
+              );
+            } else {
+              toast.error(
+                `Failed to save questions: ${msg}. Please try again.`,
+              );
+            }
           },
         },
       );
@@ -691,9 +720,9 @@ export default function QuestionsTab({
 
   const handleSubjectChange = useCallback((val: string) => {
     setSubject(val);
-    // Pre-populate with current known count — don't auto-save; user must manually edit count to trigger save
-    const currentCount = progressMapRef.current[val] ?? 0;
-    setCountInput(String(currentCount));
+    // Clear input on subject change — user must type a new count to save
+    // This prevents stale counts from being accidentally re-saved
+    setCountInput("");
   }, []);
 
   const handleCountChange = useCallback(
@@ -733,14 +762,49 @@ export default function QuestionsTab({
   );
 
   // Refresh today's counts from localStorage whenever relevant data loads
+  // Use stable subject names key + ref to avoid infinite re-renders when allSubjects rebuilds
+  const allSubjectsRef = useRef(allSubjects);
+  allSubjectsRef.current = allSubjects;
+  const allSubjectNamesKey = allSubjects.map((s) => s.name).join(",");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional -- allSubjectNamesKey used to stabilize; allSubjects accessed via ref
   useEffect(() => {
     const todayStr = new Date().toISOString().split("T")[0];
     const result: Record<string, number> = {};
-    for (const s of allSubjects) {
+    for (const s of allSubjectsRef.current) {
       result[s.name] = getTodayQCount(s.name, todayStr);
     }
-    setTodayQCounts(result);
-  }, [allSubjects]);
+    // Only update state if values actually changed to prevent infinite re-render loop
+    setTodayQCounts((prev) => {
+      const keys = Object.keys(result);
+      const prevKeys = Object.keys(prev);
+      if (keys.length !== prevKeys.length) return result;
+      for (const k of keys) {
+        if (prev[k] !== result[k]) return result;
+      }
+      return prev;
+    });
+  }, [allSubjectNamesKey]);
+
+  // Sync todayQCounts with backend rawProgress (backend is source of truth)
+  const rawProgressRef = useRef(rawProgress);
+  rawProgressRef.current = rawProgress;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional -- rawProgress accessed via ref; re-run when length changes
+  useEffect(() => {
+    const backendData = rawProgressRef.current as SubjectQuestionProgress[];
+    if (!backendData || backendData.length === 0) return;
+    setTodayQCounts((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const p of backendData) {
+        const n = Number(p.count);
+        if (next[p.subjectName] !== n) {
+          next[p.subjectName] = n;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [rawProgress.length]);
 
   const todayTotalQ = useMemo(() => {
     return Object.values(todayQCounts).reduce((a, b) => a + b, 0);
@@ -818,6 +882,48 @@ export default function QuestionsTab({
               History
             </Button>
             <TargetsPanel />
+            {/* Clear today's questions */}
+            <AlertDialog
+              open={showClearConfirm}
+              onOpenChange={setShowClearConfirm}
+            >
+              <AlertDialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10"
+                  title="Clear today's questions"
+                  data-ocid="questions.clear.open_modal_button"
+                >
+                  <Eraser size={13} />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent data-ocid="questions.clear.dialog">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear today's questions?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will reset all question counts for today. This cannot
+                    be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-ocid="questions.clear.cancel_button">
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => {
+                      const today = new Date().toISOString().split("T")[0];
+                      localStorage.removeItem(`ssc_qcounts_${today}`);
+                      toast.success("Today's questions cleared");
+                    }}
+                    className="bg-amber-500 hover:bg-amber-600 text-white"
+                    data-ocid="questions.clear.confirm_button"
+                  >
+                    Clear
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
         <p className="text-sm text-muted-foreground ml-11">
@@ -1050,19 +1156,19 @@ export default function QuestionsTab({
 
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground uppercase tracking-wider">
-                    Total Questions Solved
+                    Set Total Count{subject ? ` for ${subject}` : ""}
                   </Label>
                   <Input
                     type="number"
                     min={0}
-                    placeholder="e.g. 350"
+                    placeholder="Enter total count (e.g. 350)"
                     value={countInput}
                     onChange={handleCountChange}
                     className="bg-muted/40 border-input focus:border-primary/50 font-mono"
                   />
                   <p className="text-[10px] text-muted-foreground">
-                    Sets your running total for the{" "}
-                    {TOTAL_GOAL.toLocaleString()} goal AND logs today's count.
+                    This sets the <strong>total</strong> question count for this
+                    subject (overwrites previous value).
                   </p>
                 </div>
 
