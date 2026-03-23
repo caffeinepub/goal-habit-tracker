@@ -380,16 +380,80 @@ function loadCustomTheme(): CustomThemeColors {
 
 export function applyCustomTheme(ct: CustomThemeColors) {
   const root = document.documentElement;
-  const bg = ct.gradient
-    ? `linear-gradient(${ct.gradientDir}, ${ct.bg}, ${ct.gradientColor2})`
-    : ct.bg;
+
+  // Keep setting these for compatibility/reference
   root.style.setProperty("--custom-bg", ct.bg);
-  root.style.setProperty("--custom-bg-gradient", bg);
+  root.style.setProperty(
+    "--custom-bg-gradient",
+    ct.gradient
+      ? `linear-gradient(${ct.gradientDir}, ${ct.bg}, ${ct.gradientColor2})`
+      : ct.bg,
+  );
   root.style.setProperty("--custom-card", ct.card);
   root.style.setProperty("--custom-border", ct.border);
   root.style.setProperty("--custom-accent", ct.accent);
   root.style.setProperty("--custom-text", ct.text);
   root.style.setProperty("--custom-active", "1");
+
+  const bgValue = ct.gradient
+    ? `linear-gradient(${ct.gradientDir}, ${ct.bg}, ${ct.gradientColor2})`
+    : ct.bg;
+
+  // Inject/update a <style> tag that actually overrides the Tailwind-generated CSS
+  let styleEl = document.getElementById(
+    "ssc-custom-theme-override",
+  ) as HTMLStyleElement | null;
+  if (!styleEl) {
+    styleEl = document.createElement("style");
+    styleEl.id = "ssc-custom-theme-override";
+    document.head.appendChild(styleEl);
+  }
+
+  styleEl.textContent = `
+    html.theme-custom-active body,
+    html.theme-custom-active .bg-background,
+    html.theme-custom-active .min-h-screen {
+      background: ${bgValue} !important;
+      background-color: ${ct.bg} !important;
+      color: ${ct.text} !important;
+    }
+    html.theme-custom-active .bg-card,
+    html.theme-custom-active .bg-popover,
+    html.theme-custom-active .glass-card {
+      background-color: ${ct.card} !important;
+    }
+    html.theme-custom-active .bg-muted {
+      background-color: ${ct.card} !important;
+    }
+    html.theme-custom-active .bg-sidebar,
+    html.theme-custom-active [class*="bg-sidebar"] {
+      background-color: ${ct.card} !important;
+    }
+    html.theme-custom-active .border-border,
+    html.theme-custom-active [class*="border-border"] {
+      border-color: ${ct.border} !important;
+    }
+    html.theme-custom-active .text-foreground,
+    html.theme-custom-active .text-card-foreground,
+    html.theme-custom-active .text-popover-foreground {
+      color: ${ct.text} !important;
+    }
+    html.theme-custom-active .text-primary {
+      color: ${ct.accent} !important;
+    }
+    html.theme-custom-active .bg-primary {
+      background-color: ${ct.accent} !important;
+    }
+    html.theme-custom-active .border-primary,
+    html.theme-custom-active [class*="ring-primary"] {
+      border-color: ${ct.accent} !important;
+    }
+    html.theme-custom-active .text-muted-foreground {
+      color: ${ct.text}99 !important;
+    }
+  `;
+
+  root.classList.add("theme-custom-active");
 }
 
 function clearCustomTheme() {
@@ -401,6 +465,9 @@ function clearCustomTheme() {
   root.style.removeProperty("--custom-accent");
   root.style.removeProperty("--custom-text");
   root.style.removeProperty("--custom-active");
+  root.classList.remove("theme-custom-active");
+  const styleEl = document.getElementById("ssc-custom-theme-override");
+  if (styleEl) styleEl.remove();
 }
 
 const GRADIENT_DIRS = [
@@ -431,7 +498,10 @@ export default function AppearancePanel({
   const [customTheme, setCustomTheme] =
     useState<CustomThemeColors>(loadCustomTheme);
   const [customApplied, setCustomApplied] = useState(() => {
-    return !!document.documentElement.style.getPropertyValue("--custom-active");
+    return (
+      !!document.documentElement.style.getPropertyValue("--custom-active") ||
+      document.documentElement.classList.contains("theme-custom-active")
+    );
   });
 
   useEffect(() => {
@@ -889,8 +959,13 @@ export default function AppearancePanel({
                 size="sm"
                 className="flex-1 text-xs bg-primary hover:bg-primary/90 text-primary-foreground"
                 onClick={() => {
-                  applyCustomTheme(customTheme);
+                  // Save to localStorage AND apply
+                  localStorage.setItem(
+                    "ssc_custom_theme",
+                    JSON.stringify(customTheme),
+                  );
                   localStorage.setItem("ssc_custom_theme_applied", "1");
+                  applyCustomTheme(customTheme);
                   setCustomApplied(true);
                 }}
               >
@@ -919,6 +994,7 @@ export default function AppearancePanel({
                   className="text-xs text-muted-foreground hover:text-destructive px-2"
                   onClick={() => {
                     clearCustomTheme();
+                    localStorage.removeItem("ssc_custom_theme");
                     localStorage.setItem("ssc_custom_theme_applied", "0");
                     setCustomApplied(false);
                   }}
@@ -969,6 +1045,7 @@ export default function AppearancePanel({
             className="w-full text-xs border-border text-muted-foreground hover:text-foreground"
             onClick={() => {
               clearCustomTheme();
+              localStorage.removeItem("ssc_custom_theme");
               localStorage.setItem("ssc_custom_theme_applied", "0");
               setCustomApplied(false);
               document.documentElement.classList.remove("rainbow-text");
