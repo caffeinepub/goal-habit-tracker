@@ -7,6 +7,7 @@ import {
   Clock,
   Moon,
   Palette,
+  Pencil,
   Sparkles,
   Sun,
   SunMedium,
@@ -283,6 +284,39 @@ export const THEMES: ThemeDef[] = [
   },
 ];
 
+// ─── Nord palette ─────────────────────────────────────────────────────────────
+
+const NORD_DEFAULTS = {
+  bg: "#2e3440",
+  card: "#3b4252",
+  border: "#434c5e",
+  accent: "#88c0d0",
+  text: "#eceff4",
+};
+
+const NORD_SWATCHES = [
+  // Polar Night
+  { color: "#2e3440", group: "Polar Night", label: "BG" },
+  { color: "#3b4252", group: "Polar Night", label: "Card" },
+  { color: "#434c5e", group: "Polar Night", label: "Border" },
+  { color: "#4c566a", group: "Polar Night", label: "Surface" },
+  // Snow Storm
+  { color: "#d8dee9", group: "Snow Storm", label: "Text-3" },
+  { color: "#e5e9f0", group: "Snow Storm", label: "Text-2" },
+  { color: "#eceff4", group: "Snow Storm", label: "Text" },
+  // Frost
+  { color: "#8fbcbb", group: "Frost", label: "Frost-1" },
+  { color: "#88c0d0", group: "Frost", label: "Accent" },
+  { color: "#81a1c1", group: "Frost", label: "Frost-3" },
+  { color: "#5e81ac", group: "Frost", label: "Frost-4" },
+  // Aurora
+  { color: "#bf616a", group: "Aurora", label: "Red" },
+  { color: "#d08770", group: "Aurora", label: "Orange" },
+  { color: "#ebcb8b", group: "Aurora", label: "Yellow" },
+  { color: "#a3be8c", group: "Aurora", label: "Green" },
+  { color: "#b48ead", group: "Aurora", label: "Purple" },
+];
+
 // ─── Accent color presets ─────────────────────────────────────────────────────
 
 const ACCENT_PRESETS = [
@@ -495,6 +529,7 @@ export default function AppearancePanel({
   onClose,
 }: AppearancePanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const customBuilderRef = useRef<HTMLDivElement>(null);
   const [customTheme, setCustomTheme] =
     useState<CustomThemeColors>(loadCustomTheme);
   const [customApplied, setCustomApplied] = useState(() => {
@@ -503,6 +538,7 @@ export default function AppearancePanel({
       document.documentElement.classList.contains("theme-custom-active")
     );
   });
+  const [nordLoaded, setNordLoaded] = useState(false);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -513,6 +549,25 @@ export default function AppearancePanel({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [onClose]);
+
+  function loadNordIntoBuilder() {
+    setCustomTheme((prev) => ({
+      ...prev,
+      bg: NORD_DEFAULTS.bg,
+      card: NORD_DEFAULTS.card,
+      border: NORD_DEFAULTS.border,
+      accent: NORD_DEFAULTS.accent,
+      text: NORD_DEFAULTS.text,
+    }));
+    setNordLoaded(true);
+    // Scroll to builder section
+    setTimeout(() => {
+      customBuilderRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 50);
+  }
 
   const fontSizeLabel =
     settings.fontSize <= 13
@@ -610,6 +665,20 @@ export default function AppearancePanel({
                   </span>
                   {settings.theme === t.id && (
                     <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-primary" />
+                  )}
+                  {/* Nord edit pencil — only on nord tile */}
+                  {t.id === "nord" && (
+                    <button
+                      type="button"
+                      title="Edit Nord theme in builder"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        loadNordIntoBuilder();
+                      }}
+                      className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#88c0d0] flex items-center justify-center shadow-md hover:bg-[#81a1c1] transition-colors z-10"
+                    >
+                      <Pencil size={9} className="text-[#2e3440]" />
+                    </button>
                   )}
                 </button>
               ))}
@@ -819,11 +888,135 @@ export default function AppearancePanel({
           </div>
 
           {/* ── Build Your Own Theme ────────────────────────────────────── */}
-          <div className="space-y-3 border border-border rounded-xl p-3">
-            <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide flex items-center gap-1.5">
-              <Palette size={13} />
-              Build Your Own Theme
-            </Label>
+          <div
+            ref={customBuilderRef}
+            className="space-y-3 border border-border rounded-xl p-3"
+          >
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide flex items-center gap-1.5">
+                <Palette size={13} />
+                Build Your Own Theme
+              </Label>
+              {nordLoaded && (
+                <span
+                  className="text-[9px] font-bold px-1.5 py-0.5 rounded-md"
+                  style={{
+                    background: "#3b4252",
+                    color: "#88c0d0",
+                    border: "1px solid #434c5e",
+                  }}
+                >
+                  Nord loaded
+                </span>
+              )}
+            </div>
+
+            {/* Nord Palette Swatches — shown when Nord is loaded */}
+            {nordLoaded && (
+              <div
+                className="space-y-2 rounded-lg p-2"
+                style={{ background: "#2e3440", border: "1px solid #434c5e" }}
+              >
+                <p
+                  className="text-[9px] font-bold uppercase tracking-wider"
+                  style={{ color: "#88c0d0" }}
+                >
+                  Nord Palette — click to apply
+                </p>
+                {/* Group rows */}
+                {[
+                  {
+                    label: "Polar Night",
+                    colors: ["#2e3440", "#3b4252", "#434c5e", "#4c566a"],
+                  },
+                  {
+                    label: "Snow Storm",
+                    colors: ["#d8dee9", "#e5e9f0", "#eceff4"],
+                  },
+                  {
+                    label: "Frost",
+                    colors: ["#8fbcbb", "#88c0d0", "#81a1c1", "#5e81ac"],
+                  },
+                  {
+                    label: "Aurora",
+                    colors: [
+                      "#bf616a",
+                      "#d08770",
+                      "#ebcb8b",
+                      "#a3be8c",
+                      "#b48ead",
+                    ],
+                  },
+                ].map((group) => (
+                  <div key={group.label} className="space-y-0.5">
+                    <p
+                      className="text-[8px] uppercase tracking-wider"
+                      style={{ color: "#4c566a" }}
+                    >
+                      {group.label}
+                    </p>
+                    <div className="flex gap-1 flex-wrap">
+                      {group.colors.map((color) => {
+                        const swatch = NORD_SWATCHES.find(
+                          (s) => s.color === color,
+                        );
+                        return (
+                          <div key={color} className="relative group/swatch">
+                            <button
+                              type="button"
+                              title={`${swatch?.label ?? color} — ${color}`}
+                              className="w-6 h-6 rounded border-2 border-transparent hover:border-white/60 transition-all hover:scale-110"
+                              style={{ background: color }}
+                              onClick={() => {
+                                // Determine best slot based on group
+                                const g = group.label;
+                                if (g === "Polar Night") {
+                                  const idx = group.colors.indexOf(color);
+                                  const keys = [
+                                    "bg",
+                                    "card",
+                                    "border",
+                                  ] as const;
+                                  const k = keys[idx] ?? "bg";
+                                  setCustomTheme((prev) => ({
+                                    ...prev,
+                                    [k]: color,
+                                  }));
+                                } else if (g === "Snow Storm") {
+                                  setCustomTheme((prev) => ({
+                                    ...prev,
+                                    text: color,
+                                  }));
+                                } else {
+                                  setCustomTheme((prev) => ({
+                                    ...prev,
+                                    accent: color,
+                                  }));
+                                }
+                              }}
+                            />
+                            <span
+                              className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[7px] whitespace-nowrap opacity-0 group-hover/swatch:opacity-100 transition-opacity pointer-events-none"
+                              style={{ color: "#d8dee9" }}
+                            >
+                              {swatch?.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setNordLoaded(false)}
+                  className="text-[9px] mt-1 hover:opacity-80 transition-opacity"
+                  style={{ color: "#4c566a" }}
+                >
+                  Hide palette
+                </button>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2">
               {(
