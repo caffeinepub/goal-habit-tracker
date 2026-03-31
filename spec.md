@@ -1,33 +1,41 @@
 # SSC CGL Ultimate Tracker
 
 ## Current State
-- Full-featured study tracker with: Home, Add Subject, Analytics, Pomodoro Timer, Study Plan, Questions, Exam, Notebook, Notepad, Daily Routine, Table Maker, Files tabs
-- Global Appearance panel (palette icon in sidebar) controls theme, font, font size, accent color, text color, rainbow text, custom theme builder
-- Questions tab has a "Log Questions" form with subject select + count input + timer + per-question time control; Subject Breakdown card; Monthly Plan section; Progress chart dialog; History dialog
-- Known issue: the Questions section "Log Questions" form has a bug -- when subject is pre-populated from backend, calling `triggerSave` inside `handleSubjectChange` can cause a race condition / validation failure, and the count input sometimes resets or shows stale data
+The Questions section has a 30-day challenge that auto-resets after 30 days have elapsed (cycleStart stored in `localStorage` under `ssc_cycle_start_questions`). There is no manual reset option. Challenge progress (per-subject question counts) is stored in localStorage (`ssc_daily_q_<subject>_<date>`) and synced to backend via `useSetQuestionCount`. The cycle start date drives day-of-cycle calculation and auto-rollover.
 
 ## Requested Changes (Diff)
 
 ### Add
-- **Per-section appearance icon**: A small palette/color icon button in the header of each main section (Study Plan, Questions, Daily Routine, Pomodoro/Timer, Exam, Notebook, Notepad, Home, Analytics, Table Maker, Add Subject, Files). When clicked, opens a compact per-section style panel (popover/dialog) letting the user choose:
-  - Font family (from same FONT_OPTIONS list)
-  - Font size (slider 12–22px)
-  - Text color (presets + custom color picker)
-  - Accent/highlight color for that section
-  - These settings are stored per-section in localStorage (key: `ssc_section_style_<sectionId>`) and applied via inline CSS on the section wrapper div
+- **Manual Reset button** in the Questions section header/settings area (e.g. a "Reset Challenge" button with a refresh/warning icon).
+- **Date picker dialog**: When clicked, opens a dialog with:
+  - A calendar/date picker to choose the new challenge **start date** (any date, past or future)
+  - A confirmation button labelled "Reset Challenge"
+  - A warning message: "This will clear all challenge progress and start a fresh 30-day window from the chosen date. You cannot reset again for 30 days."
+- **Reset logic on confirm**:
+  1. Archive current cycle to backend (same as auto-rollover: call `savePlanCycleMutate` with current `cycleStart` and today as `endDate`)
+  2. Set `ssc_cycle_start_questions` in localStorage to the chosen start date
+  3. Set `ssc_challenge_reset_lock` in localStorage to the chosen start date (used to compute the 30-day lock window)
+  4. Update React state `cycleStart` to the new date
+  5. Clear all backend question counts by calling `setQuestionCount` with 0 for every subject
+  6. Clear today's localStorage question counts for all subjects
+- **Lock mechanism**:
+  - On mount and after reset, check `ssc_challenge_reset_lock` in localStorage
+  - If today is less than 30 days after the lock date, disable the Reset button and show a countdown badge: "Reset in X days" next to the button
+  - If 30 days have passed, enable the Reset button normally
+  - Lock date is set to the chosen start date at reset time
 
 ### Modify
-- **Questions section bug fix**: 
-  - In `handleSubjectChange`, do NOT call `triggerSave` immediately when pre-populating; only set the display value. Only save when the user manually changes the count input.
-  - Fix the count input so it correctly shows the current backend count when a subject is selected (read from `progressMap` not stale ref)
-  - Ensure `setTodayQCounts` is defined before `triggerSave` calls it (move or restructure)
-  - The `setTodayQCounts` call inside `triggerSave` needs the setter to be stable
+- QuestionsTab.tsx: Add the reset button, dialog, lock logic, and countdown display.
 
 ### Remove
-- Nothing removed
+- Nothing removed.
 
 ## Implementation Plan
-1. Create a `SectionStylePanel` component: compact popover with font family select, font size slider, text color picker (presets + custom), accent color picker. Accepts `sectionId`, `onClose`. Reads/writes localStorage key `ssc_section_style_<sectionId>`. Returns a `useSectionStyle(sectionId)` hook that returns `{fontFamily, fontSize, textColor, accentColor}` as inline style object.
-2. Add a small palette icon button to each section's header (Study Plan, Questions, Daily Routine, Timer, Exam, Notebook, Notepad, Home, Analytics, Table Maker, AddSubject, Files). When clicked, toggles the SectionStylePanel popover.
-3. In each section's root wrapper div, apply `style={sectionStyle}` from the hook.
-4. Fix Questions tab: restructure `handleSubjectChange` to not auto-save, fix count pre-population, ensure `setTodayQCounts` is not called before it's defined.
+1. Add `RESET_LOCK_KEY = 'ssc_challenge_reset_lock'` constant in QuestionsTab.
+2. Add state: `resetLockDate` (string | null), `showResetDialog` (boolean), `resetPickedDate` (string - defaults to today).
+3. On mount, read `ssc_challenge_reset_lock` from localStorage into `resetLockDate`.
+4. Compute `daysUntilReset`: if `resetLockDate` is set and `daysDiffQ(resetLockDate, today) < 30`, then `daysUntilReset = 30 - daysDiffQ(resetLockDate, today)`, else 0.
+5. Add a "Reset Challenge" button in the Questions header/card area. Disabled if `daysUntilReset > 0`, showing a tooltip or badge "Reset in X days".
+6. Clicking the button opens a dialog with a date input (type="date") defaulting to today, a warning message, and a Confirm button.
+7. On confirm: archive cycle, update localStorage keys, reset backend counts to 0 for all subjects, update React state, close dialog.
+8. All existing auto-rollover logic remains unchanged.

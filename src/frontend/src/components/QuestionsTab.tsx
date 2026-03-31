@@ -15,6 +15,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -87,6 +89,7 @@ import TargetsPanel from "./TargetsPanel";
 const Q_TIMER_KEY = "ssc_questions_timer_state";
 const Q_SECTION_TIME_PREFIX = "ssc_section_time_questions_";
 const Q_CYCLE_KEY = "ssc_cycle_start_questions";
+const RESET_LOCK_KEY = "ssc_challenge_reset_lock";
 
 interface QTimerState {
   subject: string;
@@ -317,6 +320,15 @@ export default function QuestionsTab({
   });
   const [historyOpen, setHistoryOpen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [resetPickedDate, setResetPickedDate] = useState(today);
+  const [daysUntilReset, setDaysUntilReset] = useState<number>(() => {
+    const lockDate = localStorage.getItem(RESET_LOCK_KEY);
+    if (!lockDate) return 0;
+    const todayStr = new Date().toISOString().split("T")[0];
+    const diff = daysDiffQ(lockDate, todayStr);
+    return diff < 30 ? 30 - diff : 0;
+  });
   const savePlanCycleMutateRef = useRef(savePlanCycleMutation.mutate);
   savePlanCycleMutateRef.current = savePlanCycleMutation.mutate;
   const saveSectionTimeLogMutateRef = useRef(saveSectionTimeLog.mutate);
@@ -924,6 +936,32 @@ export default function QuestionsTab({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+            {/* Reset 30-day challenge */}
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 disabled:opacity-40"
+                title={
+                  daysUntilReset > 0
+                    ? `Reset available in ${daysUntilReset} days`
+                    : "Reset 30-day challenge"
+                }
+                disabled={daysUntilReset > 0}
+                onClick={() => {
+                  setResetPickedDate(today);
+                  setShowResetDialog(true);
+                }}
+                data-ocid="questions.challenge.open_modal_button"
+              >
+                <RotateCcw size={13} />
+              </Button>
+              {daysUntilReset > 0 && (
+                <span className="text-[10px] text-muted-foreground font-medium whitespace-nowrap">
+                  Reset in {daysUntilReset}d
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <p className="text-sm text-muted-foreground ml-11">
@@ -1643,6 +1681,94 @@ export default function QuestionsTab({
               </Table>
             </ScrollArea>
           )}
+        </DialogContent>
+      </Dialog>
+      {/* Reset Challenge Dialog */}
+      <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <DialogContent
+          className="max-w-md bg-card border-border"
+          data-ocid="questions.challenge.dialog"
+        >
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <RotateCcw size={16} className="text-red-500" />
+              Reset 30-Day Challenge
+            </DialogTitle>
+            <DialogDescription className="text-muted-foreground text-sm">
+              Choose a new start date for your 30-day challenge window.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+                New start date
+              </Label>
+              <input
+                type="date"
+                value={resetPickedDate}
+                max={today}
+                onChange={(e) => setResetPickedDate(e.target.value)}
+                className="w-full h-9 px-3 text-sm rounded-md border border-input bg-muted/40 text-foreground focus:outline-none focus:border-primary/50"
+                data-ocid="questions.challenge.input"
+              />
+            </div>
+            <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3">
+              <p className="text-xs text-red-400 leading-relaxed">
+                ⚠️ This will clear <strong>all challenge progress</strong> and
+                start a fresh 30-day window from the selected date. You{" "}
+                <strong>cannot reset again for 30 days</strong>.
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowResetDialog(false)}
+              data-ocid="questions.challenge.cancel_button"
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => {
+                if (!resetPickedDate) return;
+                // Archive current cycle
+                savePlanCycleMutateRef.current({
+                  section: "questions" as Section,
+                  startDate: cycleStart,
+                  endDate: today,
+                  summary: daysDiffQ(cycleStart, today),
+                });
+                // Set new cycle start
+                localStorage.setItem(Q_CYCLE_KEY, resetPickedDate);
+                // Lock reset for 30 days from chosen date
+                localStorage.setItem(RESET_LOCK_KEY, resetPickedDate);
+                setCycleStart(resetPickedDate);
+                // Reset all subject counts
+                for (const subj of allSubjects) {
+                  setQuestionCount.mutate({ subjectName: subj.name, count: 0 });
+                  setTodayQCount(subj.name, today, 0);
+                }
+                // Clear today's counts in state
+                const zeroedCounts: Record<string, number> = {};
+                for (const s of allSubjects) {
+                  zeroedCounts[s.name] = 0;
+                }
+                setTodayQCounts(zeroedCounts);
+                // Update lock countdown
+                setDaysUntilReset(30);
+                setShowResetDialog(false);
+                toast.success(
+                  `Challenge reset! New 30-day window starts from ${resetPickedDate}.`,
+                );
+              }}
+              data-ocid="questions.challenge.confirm_button"
+            >
+              Reset Challenge
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
